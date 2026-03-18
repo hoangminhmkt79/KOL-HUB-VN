@@ -80,7 +80,7 @@ export default function HomePage() {
   const [view, setView] = useState('landing');   // landing | apply | success
   const [applyStep, setApplyStep] = useState(1); // 1 | 2 | 3
   const [form, setForm] = useState({
-    name: '', email: '', link: '', followers: '', niche: '',
+    name: '', phone: '', email: '',, link: '', followers: '', niche: '',
     avg_views: '', avg_viewers: '', platform: '', ct: '',
     address: '', expected_gmv: '', channel_gmv: '', phone: '',
   });
@@ -204,6 +204,7 @@ export default function HomePage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div><label style={S.lbl}>Họ tên *</label><input style={S.input} value={form.name} onChange={set('name')} placeholder="Nguyễn Văn A" /></div>
+                    <div><label style={S.lbl}>Số điện thoại *</label><input style={S.input} type="tel" value={form.phone||''} onChange={e=>{setForm(p=>({...p,phone:e.target.value}));setErr('');}} placeholder="+84 901 234 567"/></div>
                     <div><label style={S.lbl}>Email *</label><input style={S.input} type="email" value={form.email} onChange={set('email')} placeholder="you@email.com" /></div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
