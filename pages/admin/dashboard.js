@@ -269,7 +269,7 @@ export default function Dashboard() {
               <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 18, overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 840 }}>
-                    <thead><tr>{['Creator','Nền tảng','Lĩnh vực','Loại','Followers','Score','Tiềm năng','GMV','Promo','Status'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                    <thead><tr>{['Creator','Link TikTok','Nền tảng','Lĩnh vực','Loại','Followers','Score','Tiềm năng','GMV kênh','Địa chỉ','GMV','Promo','Status'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
                     <tbody>
                       {loading ? <tr><td colSpan={10} style={{ ...TD, textAlign: 'center', padding: 36, color: '#a1a1aa' }}>Đang tải…</td></tr> :
                        filtered.length === 0 ? <tr><td colSpan={10} style={{ ...TD, textAlign: 'center', padding: 36, color: '#a1a1aa' }}>Không có kết quả</td></tr> :
@@ -288,6 +288,7 @@ export default function Dashboard() {
                             <td style={TD}><span style={{ fontSize: 15, fontWeight: 900, color: scC(sv) }}>{sv}</span></td>
                             <td style={TD}>{pt ? <Badge v={pt.l} c={pt.c} bg={pt.bg} /> : <span style={{ color: '#a1a1aa', fontSize: 11 }}>—</span>}</td>
                             <td style={TD}>
+                              <td style={TD}>{c.tiktok_link ? <a href={c.tiktok_link.startsWith('http')?c.tiktok_link:'https://'+c.tiktok_link} target="_blank" style={{color:'#7c3aed',fontSize:11,fontWeight:600}}>{c.tiktok_link}</a> : '—'}</td>
                               {eGmv.id === c.id
                                 ? <div style={{ display: 'flex', gap: 4 }}>
                                     <input type="number" defaultValue={eGmv.v} id={`g${c.id}`} style={{ ...IN, width: 80 }} />
