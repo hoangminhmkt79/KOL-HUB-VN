@@ -99,6 +99,8 @@ export default function HomePage() {
       setErr('Điền đầy đủ tất cả các trường.'); return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) { setErr('Email không hợp lệ.'); return; }
+    if (form.phone && !/^(\+84|0)[0-9]{9,10}$/.test(form.phone.replace(/\s/g,''))) { setErr('Số điện thoại không hợp lệ.'); return; }; return; }
+    
     setErr(''); setApplyStep(2);
   };
 

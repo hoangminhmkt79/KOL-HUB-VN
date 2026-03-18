@@ -38,6 +38,7 @@ const fM = n => { const v = Math.round(n || 0); return v >= 1000000 ? (v / 10000
 const scV = c => c.followers ? (c.avg_views / c.followers).toFixed(2) : '0.00';
 const scC = s => { const v = parseFloat(s); return v >= 0.3 ? '#059669' : v >= 0.15 ? '#d97706' : '#ef4444'; };
 const nL  = v => NICHES.find(n => n.v === v)?.l || v;
+const getUN = l => { if(!l) return '—'; const m=l.match(/@([A-Za-z0-9._-]+)/); return m?'@'+m[1]:'—'; };
 // Lấy @username từ link bất kỳ
 const getUN = link => {
   if (!link) return '—';
