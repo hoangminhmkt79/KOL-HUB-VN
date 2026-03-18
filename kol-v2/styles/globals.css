@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Be Vietnam Pro', -apple-system, sans-serif;
+  font-size: 14px;
+  background: #fafafa;
+  color: #0f0f1a;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+input, select, textarea, button { font-family: inherit; }
+button { cursor: pointer; transition: all .18s; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
+
+@keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Mobile responsive ── */
+@media (max-width: 768px) {
+  .admin-sidebar  { display: none !important; }
+  .admin-mob-nav  { display: flex !important; }
+  .admin-main     { padding: 12px 14px 80px !important; }
+  .grid-4col      { grid-template-columns: 1fr 1fr !important; }
+  .grid-2col      { grid-template-columns: 1fr !important; }
+  .desktop-table  { display: none !important; }
+  .mobile-cards   { display: block !important; }
+}
+@media (min-width: 769px) {
+  .admin-mob-nav  { display: none !important; }
+  .mobile-cards   { display: none !important; }
+  .desktop-table  { display: block !important; }
+}
