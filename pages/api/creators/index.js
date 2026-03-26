@@ -16,14 +16,14 @@ export default async function handler(req, res) {
       q += ` AND (LOWER(name) LIKE $${i} OR LOWER(email) LIKE $${i} OR phone LIKE $${i++})`;
       p.push(`%${search.toLowerCase()}%`);
     }
+    const countQ = q.replace('SELECT *', 'SELECT COUNT(*)');
     q += ' ORDER BY applied_at DESC';
     const offset = (parseInt(page) - 1) * PAGE_SIZE;
-    const countQ = q.replace('SELECT *', 'SELECT COUNT(*)');
     const dataQ = q + ` LIMIT ${PAGE_SIZE} OFFSET ${offset}`;
     try {
       const [countR, dataR] = await Promise.all([pool.query(countQ, p), pool.query(dataQ, p)]);
       return res.status(200).json({ creators: dataR.rows, total: parseInt(countR.rows[0].count), page: parseInt(page), pages: Math.ceil(countR.rows[0].count / PAGE_SIZE) });
-    } catch (e) {console.error(e); return res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error(e); return res.status(500).json({ error: 'Lỗi database.' }); }
   }
 
   if (req.method === 'POST') {
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       return res.status(201).json({ success: true, creator: r.rows[0] });
     } catch (e) {
       if (e.code === '23505') return res.status(409).json({ error: 'Email này đã đăng ký rồi.' });
-      console.error(e); return res.status(500).json({ error: e.message });
+      console.error(e); return res.status(500).json({ error: 'Lỗi database.' });
     }
   }
 
