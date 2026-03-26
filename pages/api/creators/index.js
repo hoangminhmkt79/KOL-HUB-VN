@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     try {
       const [countR, dataR] = await Promise.all([pool.query(countQ, p), pool.query(dataQ, p)]);
       return res.status(200).json({ creators: dataR.rows, total: parseInt(countR.rows[0].count), page: parseInt(page), pages: Math.ceil(countR.rows[0].count / PAGE_SIZE) });
-    } catch (e) { console.error(e); return res.status(500).json({ error: 'Lỗi database.' }); }
+    } catch (e) {console.error(e); return res.status(500).json({ error: e.message }); }
   }
 
   if (req.method === 'POST') {
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       return res.status(201).json({ success: true, creator: r.rows[0] });
     } catch (e) {
       if (e.code === '23505') return res.status(409).json({ error: 'Email này đã đăng ký rồi.' });
-      console.error(e); return res.status(500).json({ error: 'Lỗi database.' });
+      console.error(e); return res.status(500).json({ error: e.message });
     }
   }
 
