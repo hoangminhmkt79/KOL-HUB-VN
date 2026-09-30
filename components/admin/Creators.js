@@ -8,7 +8,7 @@ import {
 const scoreTone = s => (s >= 0.3 ? 'green' : s >= 0.15 ? 'amber' : 'red');
 const profileUrl = l => (l ? (l.startsWith('http') ? l : 'https://' + l) : '#');
 
-const SOURCES = [['all', 'Mọi nguồn'], ['form', 'Tự đăng ký'], ['fb_group', 'Group FB'], ['referral', 'Giới thiệu'], ['invite', 'Được mời'], ['invite_accepted', 'Mời → đã điền']];
+const SOURCES = [['all', 'Mọi nguồn'], ['form', 'Tự đăng ký'], ['fb_group', 'Group FB'], ['referral', 'Giới thiệu'], ['invite', 'Được mời'], ['invite_accepted', 'Mời → đã điền'], ['zalo', 'Zalo'], ['tiktok', 'TikTok'], ['fanpage', 'Fanpage'], ['threads', 'Threads/IG'], ['email', 'Email/DM'], ['other', 'Nguồn khác']];
 const SOURCE_L = Object.fromEntries(SOURCES);
 const healthTone = h => (h >= 70 ? 'green' : h >= 45 ? 'amber' : 'red');
 const ago = d => {

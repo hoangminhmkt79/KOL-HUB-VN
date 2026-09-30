@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, useLoad, Badge, Modal, Field, Kpi, copy } from '../ui';
+import Links, { RecruitsModal } from './Links';
 import { FB_GROUP_STATUS, FB_POST_POLICY, POST_ANGLES, NICHES, nicheLabel, fmtMoney, fmtNum, fmtDate, fmtDateTime } from '../../lib/constants';
 
 const POST_STATUS = {
@@ -157,7 +158,7 @@ function Composer({ groups, camps, toast, onChanged, draft, setDraft }) {
   );
 }
 
-function Posts({ posts, groups, toast, onChanged, onResume, error }) {
+function Posts({ posts, groups, toast, onChanged, onResume, error, onRecruits }) {
   const byId = Object.fromEntries(groups.map(g => [g.id, g]));
   const removed = async p => {
     if (!window.confirm('Đánh dấu bài này bị admin group gỡ? Bị gỡ 2 lần trong cùng group → group chuyển "Bị chặn".')) return;
@@ -177,6 +178,7 @@ function Posts({ posts, groups, toast, onChanged, onResume, error }) {
               <div className="xs muted ellipsis">{angleLabel(p.angle)} · {p.code} · {p.posted_at ? fmtDateTime(p.posted_at) : `tạo ${fmtDateTime(p.created_at)}`}{p.poster ? ` · ${p.poster}` : ''}</div>
             </div>
             <span className="tnum small bold" title="Lượt click link tracking">{fmtNum(p.clicks)} click</span>
+            {p.status !== 'draft' && <button className="btn btn-sm" title="Bài này tuyển được ai" onClick={() => onRecruits(p.code)}>👥 {fmtNum(p.signups)}</button>}
             <Badge tone={st.tone} dot>{st.l}</Badge>
             {p.status === 'draft' && <button className="btn btn-sm" onClick={() => onResume(p)}>Tiếp tục</button>}
             {p.status === 'posted' && (
@@ -193,7 +195,9 @@ function Posts({ posts, groups, toast, onChanged, onResume, error }) {
   );
 }
 
-export default function Recruit({ toast }) {
+export default function Recruit({ toast, openCreator }) {
+  const [mode, setMode] = useState('links');
+  const [recruitsOf, setRecruitsOf] = useState(null);
   const groupsL = useLoad(() => api('/api/fb/groups'), []);
   const postsL = useLoad(() => api('/api/fb/posts'), []);
   const campsL = useLoad(() => api('/api/campaigns'), []);
@@ -215,11 +219,20 @@ export default function Recruit({ toast }) {
   return (
     <div className="stack" style={{ gap: 14 }}>
       <div className="page-head">
-        <div><h1 className="section-title">Tuyển qua group Facebook</h1><div className="small muted">Đo mỗi group bằng creator kích hoạt (có video được duyệt) và GMV — không bằng số signup</div></div>
-        <button className="btn btn-primary" onClick={() => setAdding(true)}>＋ Thêm group</button>
+        <div><h1 className="section-title">Tuyển creator & link tracking</h1><div className="small muted">Mỗi bài đăng 1 link riêng → biết bài nào tuyển được ai, bao nhiêu người, ra bao nhiêu video</div></div>
+        {mode === 'groups' && <button className="btn btn-primary" onClick={() => setAdding(true)}>＋ Thêm group</button>}
+      </div>
+
+      <div className="tabs">
+        <button className={`tab${mode === 'links' ? ' on' : ''}`} onClick={() => setMode('links')}>🔗 Link tracking (mọi kênh)</button>
+        <button className={`tab${mode === 'groups' ? ' on' : ''}`} onClick={() => setMode('groups')}>👥 Group Facebook (lịch đăng + score)</button>
       </div>
 
       <NoBotBanner />
+
+      {mode === 'links' && <Links toast={toast} openCreator={openCreator} camps={camps} />}
+      {recruitsOf && <RecruitsModal code={recruitsOf} onClose={() => setRecruitsOf(null)} openCreator={openCreator} toast={toast} />}
+      {mode === 'groups' && <>
 
       <div className="grid g4">
         <Kpi label="Group sẵn sàng đăng" value={`${ready}/${groups.length}`} />
@@ -273,8 +286,9 @@ export default function Recruit({ toast }) {
 
       <div className="grid g-main" style={{ alignItems: 'start' }}>
         <Composer groups={groups} camps={camps} toast={toast} onChanged={reloadAll} draft={draft} setDraft={setDraft} />
-        <Posts posts={posts} groups={groups} toast={toast} onChanged={reloadAll} error={postsL.error} onResume={p => { setDraft(p); document.getElementById('composer')?.scrollIntoView({ behavior: 'smooth' }); }} />
+        <Posts posts={posts} groups={groups} toast={toast} onChanged={reloadAll} error={postsL.error} onResume={p => { setDraft(p); document.getElementById('composer')?.scrollIntoView({ behavior: 'smooth' }); }} onRecruits={setRecruitsOf} />
       </div>
+      </>}
 
       {adding && <GroupModal onClose={() => setAdding(false)} onSaved={groupsL.reload} toast={toast} cooldown={settings.data?.rules?.fb_default_cooldown_days} />}
     </div>

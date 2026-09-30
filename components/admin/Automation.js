@@ -3,6 +3,12 @@ import { api, useLoad, Field, Badge, copy } from '../ui';
 import { NICHES, fmtDateTime } from '../../lib/constants';
 
 const RULE_FIELDS = [
+  ['Khách hàng (brand) & lead', [
+    ['accepted_services', 'Dịch vụ đang nhận (mã, cách nhau dấu phẩy): kol_booking, kol_strategy, gmv_max, livestream, ads_audit, shop_ops, google_fb', 'text'],
+    ['coi_niches', 'Ngách cần chấp thuận công ty (xung đột lợi ích): lam_dep, suc_khoe, me_be…', 'text'],
+    ['lead_reply_hours', 'SLA phản hồi lead inbound (giờ)', 'num'],
+    ['outbound_cadence_days', 'Nhịp chạm outbound (ngày, vd 0,3,7,14)', 'text'],
+  ]],
   ['Sàng lọc đơn đăng ký', [
     ['auto_screen', 'Tự động duyệt / phân loại đơn mới', 'bool'],
     ['auto_reject', 'Tự từ chối đơn dưới ngưỡng (tắt = để "Chờ duyệt")', 'bool'],
@@ -84,6 +90,8 @@ function Rules({ toast }) {
               <label key={k} className="row small" style={{ gridColumn: '1 / -1' }}>
                 <input type="checkbox" checked={!!rules[k]} onChange={e => setRules(p => ({ ...p, [k]: e.target.checked }))} /> {l}
               </label>
+            ) : t === 'text' ? (
+              <Field key={k} label={l}><input className="input input-sm" value={rules[k] ?? ''} onChange={e => setRules(p => ({ ...p, [k]: e.target.value }))} /></Field>
             ) : (
               <Field key={k} label={l}><input className="input input-sm" type="number" step="any" value={rules[k] ?? ''} onChange={e => setRules(p => ({ ...p, [k]: e.target.value }))} /></Field>
             ))}

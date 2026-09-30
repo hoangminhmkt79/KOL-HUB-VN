@@ -269,6 +269,108 @@ CREATE INDEX IF NOT EXISTS fb_posts_group_idx ON fb_posts(group_id);
 CREATE INDEX IF NOT EXISTS creators_acq_idx ON creators(acq_code);
 ALTER TABLE rate_cards ADD COLUMN IF NOT EXISTS videos_per_month INTEGER;
 ALTER TABLE rate_cards ADD COLUMN IF NOT EXISTS deal_types VARCHAR(40) NOT NULL DEFAULT 'barter,hybrid,fee';
+-- Link tracking đa kênh (Zalo, TikTok, Fanpage, Threads…) — không cần group
+CREATE TABLE IF NOT EXISTS track_links (
+  code          VARCHAR(16) PRIMARY KEY,
+  channel       VARCHAR(20) NOT NULL DEFAULT 'other',
+  source_name   VARCHAR(200) NOT NULL DEFAULT '',
+  campaign_id   INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+  angle         VARCHAR(30) NOT NULL DEFAULT 'fee',
+  utm_source    VARCHAR(100) NOT NULL DEFAULT '',
+  utm_medium    VARCHAR(100) NOT NULL DEFAULT '',
+  utm_campaign  VARCHAR(100) NOT NULL DEFAULT '',
+  cost          NUMERIC(14,0) NOT NULL DEFAULT 0,
+  clicks        INTEGER NOT NULL DEFAULT 0,
+  note          TEXT NOT NULL DEFAULT '',
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+-- Client (brand) đăng ký dịch vụ: booking KOC, vận hành sàn, audit & scale ads
+CREATE TABLE IF NOT EXISTS client_requests (
+  id              SERIAL PRIMARY KEY,
+  ref             VARCHAR(12) NOT NULL UNIQUE,
+  company         VARCHAR(200) NOT NULL,
+  contact_name    VARCHAR(120) NOT NULL DEFAULT '',
+  role            VARCHAR(120) NOT NULL DEFAULT '',
+  phone           VARCHAR(20)  NOT NULL DEFAULT '',
+  email           VARCHAR(200) NOT NULL DEFAULT '',
+  services        TEXT[] NOT NULL DEFAULT '{}',
+  platforms       TEXT[] NOT NULL DEFAULT '{}',
+  shop_links      TEXT NOT NULL DEFAULT '',
+  niche           VARCHAR(100) NOT NULL DEFAULT '',
+  gmv_band        VARCHAR(30) NOT NULL DEFAULT '',
+  ad_spend_band   VARCHAR(30) NOT NULL DEFAULT '',
+  sample_product  TEXT NOT NULL DEFAULT '',
+  sample_qty      INTEGER NOT NULL DEFAULT 0,
+  sample_value    NUMERIC(14,0) NOT NULL DEFAULT 0,
+  brief           TEXT NOT NULL DEFAULT '',
+  goal            TEXT NOT NULL DEFAULT '',
+  kol_tiers       TEXT[] NOT NULL DEFAULT '{}',
+  kol_niches      TEXT[] NOT NULL DEFAULT '{}',
+  kol_requirements TEXT NOT NULL DEFAULT '',
+  creators_count  INTEGER NOT NULL DEFAULT 0,
+  videos_per_creator INTEGER NOT NULL DEFAULT 1,
+  live_sessions   INTEGER NOT NULL DEFAULT 0,
+  budget_booking  NUMERIC(14,0) NOT NULL DEFAULT 0,
+  budget_ads      NUMERIC(14,0) NOT NULL DEFAULT 0,
+  start_date      DATE,
+  estimate        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  score           INTEGER NOT NULL DEFAULT 0,
+  score_reason    TEXT NOT NULL DEFAULT '',
+  status          VARCHAR(20) NOT NULL DEFAULT 'new',
+  lost_reason     TEXT NOT NULL DEFAULT '',
+  next_action_at  TIMESTAMPTZ,
+  acq_code        VARCHAR(16),
+  utm             JSONB NOT NULL DEFAULT '{}'::jsonb,
+  consent_at      TIMESTAMPTZ,
+  campaign_id     INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS client_requests_status_idx ON client_requests(status);
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS ads_active BOOLEAN;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS gmv_max_active BOOLEAN;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS live_active BOOLEAN;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS koc_active BOOLEAN;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS roas NUMERIC(6,2);
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS is_decision_maker BOOLEAN;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'inbound';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS lawful_basis VARCHAR(20) NOT NULL DEFAULT 'consent';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS do_not_contact BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS audit JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS flags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS touch_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS track_code VARCHAR(16);
+-- Hồ sơ khách hàng chi tiết
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS legal_name VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS tax_code VARCHAR(20) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS website VARCHAR(300) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS fanpage VARCHAR(300) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS aov NUMERIC(14,0) NOT NULL DEFAULT 0;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS top_products TEXT NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS target_customer TEXT NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS competitors TEXT NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS pain_points TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS current_partner VARCHAR(20) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS timeline VARCHAR(20) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS contact_channel VARCHAR(20) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS contact_time VARCHAR(60) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS heard_from VARCHAR(30) NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS internal_notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS deal_value NUMERIC(14,0) NOT NULL DEFAULT 0;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS discovery JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE client_requests ALTER COLUMN company DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS client_requests_shop_uq ON client_requests(LOWER(shop_links)) WHERE source='outbound' AND shop_links<>'';
+CREATE TABLE IF NOT EXISTS client_activities (
+  id          SERIAL PRIMARY KEY,
+  request_id  INTEGER NOT NULL REFERENCES client_requests(id) ON DELETE CASCADE,
+  type        VARCHAR(20) NOT NULL DEFAULT 'note',
+  actor       VARCHAR(20) NOT NULL DEFAULT 'admin',
+  message     TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS client_activities_req_idx ON client_activities(request_id);
+ALTER TABLE track_links ADD COLUMN IF NOT EXISTS target VARCHAR(10) NOT NULL DEFAULT 'creator';
+ALTER TABLE creators ADD COLUMN IF NOT EXISTS utm JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS deal_id INTEGER REFERENCES deals(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS videos_deal_idx ON videos(deal_id);
 

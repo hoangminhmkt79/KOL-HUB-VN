@@ -124,7 +124,7 @@ function ApplyForm({ initial, onDone, onBack }) {
           name: form.name, email: form.email, phone: form.phone.replace(/\s/g, ''), tiktok_link: form.link,
           followers: form.followers, avg_views: form.avg_views, avg_viewers: form.avg_viewers,
           platform: form.platform, content_type: form.ct, niche: form.niche, channel_gmv: form.gmv_kenh,
-          address: form.address, ref: form.ref, website: form.website, consent: true, ...(form.acq ? { acq: form.acq } : {}),
+          address: form.address, ref: form.ref, website: form.website, consent: true, ...(form.acq ? { acq: form.acq } : {}), ...(form.utm ? { utm: form.utm } : {}),
           rate_card: {
             deal_types: form.deal_types, require_fee: true,
             video_fee: wantsFee ? Number(form.video_fee) || null : null,
@@ -315,6 +315,9 @@ export default function Home() {
     const p = {};
     if (ref) p.ref = String(ref);
     if (acq) p.acq = String(acq).slice(0, 16);
+    const utm = {};
+    for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) if (router.query[k]) utm[k] = String(router.query[k]).slice(0, 100);
+    if (Object.keys(utm).length) p.utm = utm;
     if (h) { p.link = `tiktok.com/@${String(h).replace(/^@/, '')}`; }
     setPrefill(p);
     if (h) setView('apply');
@@ -336,7 +339,7 @@ export default function Home() {
         <div className="pub-wrap">
           <nav className="pub-nav">
             <div className="row"><div className="brand-logo">K</div><b>KOL Hub</b></div>
-            {view === 'landing' && <button className="btn btn-primary" onClick={apply}>Đăng ký</button>}
+            <div className="row"><a className="btn btn-sm hide-sm" href="/brands">Dành cho Brand →</a>{view === 'landing' && <button className="btn btn-primary" onClick={apply}>Đăng ký</button>}</div>
           </nav>
 
           {view === 'apply' && <ApplyForm initial={prefill} onBack={() => setView('landing')} onDone={r => { setRes(r); setView('done'); window.scrollTo(0, 0); }} />}
