@@ -2,6 +2,7 @@ import { route } from '../../../lib/http';
 import { getRules, setSetting, sanitizeRules, getSetting, DEFAULT_RULES } from '../../../lib/settings';
 import { tiktokConfigured } from '../../../lib/tiktok';
 import { notifyChannels } from '../../../lib/notify';
+import { fbPageConfigured } from '../../../lib/fbpage';
 
 async function read() {
   return {
@@ -12,6 +13,7 @@ async function read() {
       tiktok_sync: await getSetting('tiktok_sync', null),
       ...notifyChannels(),
       cron: !!process.env.CRON_SECRET,
+      fb_page: fbPageConfigured(),
     },
   };
 }

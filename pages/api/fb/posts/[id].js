@@ -1,11 +1,32 @@
-import { tx } from '../../../../lib/db';
-import { route, toId, bad, notFound } from '../../../../lib/http';
+import { tx, query } from '../../../../lib/db';
+import { route, toId, bad, notFound, HttpError } from '../../../../lib/http';
 import { logEvent } from '../../../../lib/events';
+import { fbPageConfigured, publishToPage } from '../../../../lib/fbpage';
 
 // posted → ghi posted_at + group.last_posted_at; removed 2 lần trong 1 group → group bị chặn
+// Đăng tự động — CHỈ cho "group" loại Fanpage của brand (post_policy = 'page')
+async function publishPage(id, b, req) {
+  if (!fbPageConfigured()) bad('Chưa cấu hình Fanpage (env FB_PAGE_ID, FB_PAGE_TOKEN).');
+  const r = await query('SELECT p.*, g.post_policy, g.name AS group_name FROM fb_posts p JOIN fb_groups g ON g.id=p.group_id WHERE p.id=$1', [id]);
+  if (!r.rows.length) notFound();
+  const p = r.rows[0];
+  if (p.post_policy !== 'page') bad('Chỉ tự đăng được lên Fanpage của brand. Group Facebook phải do người thật đăng.');
+  if (p.status !== 'draft') bad('Bài này đã đăng rồi.');
+  const message = String(b.message || p.body || '').slice(0, 5000);
+  if (!message.trim()) bad('Nội dung trống.');
+  const origin = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}`;
+  let out;
+  try { out = await publishToPage(message, `${origin}/j/${p.code}`); } catch (e) { throw new HttpError(502, e.message); }
+  const u = await query(`UPDATE fb_posts SET status='posted', posted_at=NOW(), post_url=$2, poster='Fanpage API', body=$3 WHERE id=$1 RETURNING *`, [id, out.url.slice(0, 512), message]);
+  await query('UPDATE fb_groups SET last_posted_at=NOW() WHERE id=$1', [p.group_id]);
+  await logEvent(null, { type: 'fb_posted', actor: 'system', message: `Tự đăng bài ${p.code} lên Fanpage "${p.group_name}"` });
+  return { post: u.rows[0] };
+}
+
 async function update(req) {
   const id = toId(req.query.id);
   const b = req.body || {};
+  if (b.action === 'publish_page') return publishPage(id, b, req);
   if (b.status !== undefined && !['posted', 'removed'].includes(b.status)) bad('Trạng thái không hợp lệ (posted | removed).');
   const postUrl = b.post_url !== undefined ? String(b.post_url || '').trim().slice(0, 512) : undefined;
   if (postUrl && !/^https?:\/\/([a-z0-9-]+\.)*(facebook\.com|fb\.com|fb\.watch)\//i.test(postUrl)) bad('Link bài đăng phải là link Facebook.');

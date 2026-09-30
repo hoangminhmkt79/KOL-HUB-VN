@@ -13,7 +13,7 @@ import Recruit from '../../components/admin/Recruit';
 
 const NAV = [
   ['overview', 'Tổng quan', '◎'],
-  ['creators', 'Creators', '☺'],
+  ['creators', 'Bảng KOL', '☺'],
   ['samples', 'Đơn mẫu', '▣'],
   ['videos', 'Video', '▶'],
   ['deals', 'Deals', '₫'],

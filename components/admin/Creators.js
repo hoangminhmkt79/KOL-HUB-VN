@@ -1,100 +1,165 @@
 import { useState } from 'react';
 import { api, useLoad, Avatar, Badge, CreatorStatus, SampleStatus, VideoStatus, Drawer, Field, downloadCsv, copy } from '../ui';
 import {
-  CREATOR_STATUS, CREATOR_STATUS_KEYS, NICHES, CTYPES, nicheLabel, gmvLabel,
+  CREATOR_STATUS, CREATOR_STATUS_KEYS, NICHES, TIERS, nicheLabel, gmvLabel,
   fmtNum, fmtMoney, fmtDate, fmtDateTime, trackingUrl,
 } from '../../lib/constants';
 
 const scoreTone = s => (s >= 0.3 ? 'green' : s >= 0.15 ? 'amber' : 'red');
 const profileUrl = l => (l ? (l.startsWith('http') ? l : 'https://' + l) : '#');
 
-export default function Creators({ openCreator, initial = {}, toast }) {
-  const [f, setF] = useState({ status: initial.status || 'all', niche: 'all', ct: 'all', potential: 'all', sort: 'new', search: '', page: 1 });
+const SOURCES = [['all', 'Mọi nguồn'], ['form', 'Tự đăng ký'], ['fb_group', 'Group FB'], ['referral', 'Giới thiệu'], ['invite', 'Được mời'], ['invite_accepted', 'Mời → đã điền']];
+const SOURCE_L = Object.fromEntries(SOURCES);
+const healthTone = h => (h >= 70 ? 'green' : h >= 45 ? 'amber' : 'red');
+const ago = d => {
+  if (!d) return '—';
+  const days = Math.floor((Date.now() - new Date(d)) / 864e5);
+  return days <= 0 ? 'hôm nay' : days === 1 ? 'hôm qua' : `${days} ngày trước`;
+};
+
+export default function Creators({ openCreator, initial = {}, toast, go }) {
+  const [f, setF] = useState({ segment: initial.segment || '', status: initial.status || 'all', niche: 'all', ct: 'all', source: 'all', tier: 'all', sort: 'health', search: '', page: 1 });
   const set = (k, v) => setF(p => ({ ...p, [k]: v, page: k === 'page' ? v : 1 }));
   const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' && v !== 'all')).toString();
   const { data, loading, error, reload } = useLoad(() => api('/api/creators?' + qs), [qs]);
   const [busy, setBusy] = useState(null);
+  const [sel, setSel] = useState([]);
 
   const quick = async (id, status) => {
     setBusy(id);
     try { await api(`/api/creators/${id}`, { method: 'PATCH', body: { status } }); toast(`Đã chuyển → ${CREATOR_STATUS[status].l}`); reload(); }
     catch (e) { toast(e.message); } finally { setBusy(null); }
   };
+  const bulk = async status => {
+    if (!sel.length) return;
+    setBusy('bulk');
+    try { const r = await api('/api/creators/bulk', { method: 'POST', body: { ids: sel, status } }); toast(`Đã cập nhật ${r.updated} creator`); setSel([]); reload(); }
+    catch (e) { toast(e.message); } finally { setBusy(null); }
+  };
 
-  const exportCsv = () => {
-    const rows = (data?.creators || []).map(c => [c.name, c.handle, c.phone, c.email, c.platform, nicheLabel(c.niche), c.followers, c.avg_views, c.score, c.potential, gmvLabel(c.channel_gmv), c.address, c.ship_address, c.gmv, c.promo_code, c.status, c.sample_count, c.video_count, fmtDate(c.applied_at)]);
-    downloadCsv(`creators-${new Date().toISOString().slice(0, 10)}.csv`, ['Tên', 'Handle', 'SĐT', 'Email', 'Nền tảng', 'Lĩnh vực', 'Followers', 'Avg views', 'Score', 'Tiềm năng', 'GMV kênh', 'Tỉnh', 'Địa chỉ nhận', 'GMV', 'Promo', 'Status', 'Số mẫu', 'Số video', 'Ngày ĐK'], rows);
+  const runAction = async (c, a) => {
+    const portal = `${window.location.origin}/portal/${c.portal_token}`;
+    if (a.key === 'review') return openCreator(c.id);
+    if (a.key === 'offer') return go('deals', { offerFor: c });
+    if (a.key === 'invite') { const ok = await copy(`${window.location.origin}/?h=${encodeURIComponent(c.handle || '')}&utm_source=invite`); return toast(ok ? 'Đã copy link mời — gửi lại cho creator' : 'Không copy được'); }
+    if (a.key === 'nudge' || a.key === 'address') {
+      const msg = a.key === 'nudge'
+        ? `Chào ${c.name}, bạn đã nhận mẫu nhưng chưa đăng video. Nộp link video tại: ${portal}`
+        : `Chào ${c.name}, cập nhật địa chỉ nhận mẫu giúp team tại: ${portal}`;
+      const ok = await copy(msg); return toast(ok ? 'Đã copy tin nhắn nhắc (kèm link portal) — gửi qua Zalo/SĐT' : msg);
+    }
+    if (a.tab) return go(a.tab);
+  };
+
+  const exportAll = async () => {
+    try {
+      const q = new URLSearchParams(Object.entries({ ...f, page: '' }).filter(([, v]) => v !== '' && v !== 'all'));
+      q.set('export', '1');
+      const d = await api('/api/creators?' + q.toString());
+      const rows = d.creators.map(c => [c.name, c.handle, c.phone, c.email, SOURCE_L[c.source] || c.source, c.platform, nicheLabel(c.niche), c.followers, c.avg_views, c.score, TIERS[c.tier]?.l, c.health, c.gmv, c.gpv ?? '', c.on_time_rate == null ? '' : Math.round(c.on_time_rate * 100) + '%', c.sample_count, c.video_count, c.active_deals, c.booked_fee, c.next_action?.l || '', c.status, c.address, c.ship_address, fmtDate(c.applied_at), fmtDate(c.last_activity)]);
+      downloadCsv(`kol-${new Date().toISOString().slice(0, 10)}.csv`, ['Tên', 'Handle', 'SĐT', 'Email', 'Nguồn', 'Nền tảng', 'Lĩnh vực', 'Followers', 'Avg views', 'Score', 'Tier', 'Sức khoẻ', 'GMV', 'GMV/view', 'Đúng hạn', 'Số mẫu', 'Số video', 'Deal đang chạy', 'Phí đã chốt', 'Việc tiếp theo', 'Status', 'Tỉnh', 'Địa chỉ nhận', 'Ngày ĐK', 'Hoạt động cuối'], rows);
+      toast(`Đã xuất ${rows.length} creator`);
+    } catch (e) { toast(e.message); }
   };
 
   const cs = data?.creators || [];
+  const allOn = cs.length > 0 && cs.every(c => sel.includes(c.id));
+  const segTabs = [['', 'Tất cả'], ['todo', '⚡ Cần xử lý'], ['idle', '💤 Chưa có việc'], ['top', '🏆 Ra GMV']];
   return (
     <div className="stack" style={{ gap: 14 }}>
       <div className="page-head">
-        <div><h1 className="section-title">Creators</h1><div className="small muted">{data ? `${fmtNum(data.total)} hồ sơ` : '…'}</div></div>
-        <div className="row"><button className="btn" onClick={exportCsv}>⬇ Export trang này</button><a className="btn" href="/" target="_blank" rel="noreferrer">Trang đăng ký ↗</a></div>
+        <div><h1 className="section-title">Bảng KOL</h1><div className="small muted">{data ? `${fmtNum(data.total)} hồ sơ` : '…'} · sắp theo điểm sức khoẻ, mỗi dòng có gợi ý việc tiếp theo</div></div>
+        <div className="row"><button className="btn" onClick={exportAll}>⬇ Export tất cả (theo bộ lọc)</button><a className="btn" href="/" target="_blank" rel="noreferrer">Trang đăng ký ↗</a></div>
       </div>
 
       <div className="tabs">
-        {[['all', 'Tất cả'], ['pending', 'Chờ duyệt'], ['approved', 'Đã duyệt'], ['sample_sent', 'Đã gửi mẫu'], ['content_posted', 'Đã đăng'], ['scaling', 'Scaling'], ['prospect', 'Được mời'], ['inactive', 'Inactive'], ['rejected', 'Từ chối']].map(([v, l]) => (
-          <button key={v} className={`tab${f.status === v ? ' on' : ''}`} onClick={() => set('status', v)}>{l}</button>
-        ))}
+        {segTabs.map(([v, l]) => <button key={v || 'all'} className={`tab${f.segment === v ? ' on' : ''}`} onClick={() => set('segment', v)}>{l}</button>)}
       </div>
 
       <div className="row wrap" style={{ gap: 8 }}>
-        <input className="input input-sm" style={{ width: 220 }} placeholder="Tìm tên, @handle, SĐT…" value={f.search} onChange={e => set('search', e.target.value)} />
+        <input className="input input-sm" style={{ width: 200 }} placeholder="Tìm tên, @handle, SĐT…" value={f.search} onChange={e => set('search', e.target.value)} />
+        <select className="select input-sm" style={{ width: 'auto' }} value={f.status} onChange={e => set('status', e.target.value)}>
+          <option value="all">Mọi trạng thái</option>{CREATOR_STATUS_KEYS.map(s => <option key={s} value={s}>{CREATOR_STATUS[s].l}</option>)}
+        </select>
+        <select className="select input-sm" style={{ width: 'auto' }} value={f.tier} onChange={e => set('tier', e.target.value)}>
+          <option value="all">Mọi tier</option>{Object.entries(TIERS).map(([k, t]) => <option key={k} value={k}>{t.l}</option>)}
+        </select>
+        <select className="select input-sm" style={{ width: 'auto' }} value={f.source} onChange={e => set('source', e.target.value)}>
+          {SOURCES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
         <select className="select input-sm" style={{ width: 'auto' }} value={f.niche} onChange={e => set('niche', e.target.value)}>
           <option value="all">Mọi lĩnh vực</option>{NICHES.map(n => <option key={n.v} value={n.v}>{n.l}</option>)}
         </select>
-        <select className="select input-sm" style={{ width: 'auto' }} value={f.ct} onChange={e => set('ct', e.target.value)}>
-          <option value="all">Mọi loại content</option>{CTYPES.map(n => <option key={n.v} value={n.v}>{n.l}</option>)}
-        </select>
-        <select className="select input-sm" style={{ width: 'auto' }} value={f.potential} onChange={e => set('potential', e.target.value)}>
-          <option value="all">Mọi tiềm năng</option><option value="high">⚡ High</option><option value="medium">Medium</option><option value="low">Low</option>
-        </select>
         <select className="select input-sm" style={{ width: 'auto' }} value={f.sort} onChange={e => set('sort', e.target.value)}>
-          <option value="new">Mới nhất</option><option value="score">Score cao</option><option value="gmv">GMV cao</option><option value="followers">Followers</option>
+          <option value="health">Sức khoẻ cao</option><option value="gpv">GMV/view cao</option><option value="gmv">GMV cao</option><option value="score">Engagement cao</option><option value="activity">Hoạt động gần nhất</option><option value="new">Mới đăng ký</option><option value="followers">Followers</option>
         </select>
       </div>
+
+      {sel.length > 0 && (
+        <div className="card row wrap" style={{ padding: '10px 14px', gap: 8, background: 'var(--brand-50)', borderColor: 'var(--brand-100)' }}>
+          <b className="small">Đã chọn {sel.length}</b>
+          <button className="btn btn-sm btn-primary" disabled={busy === 'bulk'} onClick={() => bulk('approved')}>✓ Duyệt</button>
+          <button className="btn btn-sm btn-danger" disabled={busy === 'bulk'} onClick={() => bulk('rejected')}>✕ Từ chối</button>
+          <button className="btn btn-sm" disabled={busy === 'bulk'} onClick={() => bulk('inactive')}>Tạm nghỉ</button>
+          <button className="btn btn-sm" onClick={() => setSel([])}>Bỏ chọn</button>
+        </div>
+      )}
 
       {error && <div className="alert alert-error">⚠ {error}</div>}
 
       <div className="card-flat">
         <div className="table-wrap">
-          <table className="table" style={{ minWidth: 820 }}>
-            <thead><tr><th>Creator</th><th>Kênh</th><th>Followers</th><th>Score</th><th>Mẫu / Video</th><th>GMV</th><th>Trạng thái</th><th></th></tr></thead>
+          <table className="table kol-table">
+            <thead><tr>
+              <th style={{ width: 32 }}><input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? sel.filter(id => !cs.some(c => c.id === id)) : [...new Set([...sel, ...cs.map(c => c.id)])])} aria-label="Chọn tất cả" /></th>
+              <th>Creator</th><th className="hide-sm">Kênh</th><th title={data?.health_formula}>Sức khoẻ ⓘ</th><th className="hide-sm">Hiệu quả</th><th className="hide-sm">Mẫu · Video · Deal</th><th className="hide-sm">Việc tiếp theo</th><th className="hide-sm">Trạng thái</th>
+            </tr></thead>
             <tbody>
               {loading && !cs.length ? <tr><td colSpan={8} className="empty">Đang tải…</td></tr> :
                !cs.length ? <tr><td colSpan={8} className="empty">Không có creator phù hợp</td></tr> :
                cs.map(c => {
                 const s = Number(c.score) || 0;
+                const a = c.next_action;
                 return (
                   <tr key={c.id} className="clickable" onClick={() => openCreator(c.id)}>
+                    <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.includes(c.id)} onChange={() => setSel(p => (p.includes(c.id) ? p.filter(x => x !== c.id) : [...p, c.id]))} aria-label={`Chọn ${c.name}`} /></td>
                     <td>
                       <div className="row" style={{ gap: 9 }}>
                         <Avatar name={c.name} size={32} />
                         <div style={{ minWidth: 0 }}>
-                          <div className="bold ellipsis" style={{ maxWidth: 180 }}>{c.name}</div>
-                          <div className="xs muted">{c.phone || c.email || '—'} · {fmtDate(c.applied_at)}</div>
+                          <div className="bold ellipsis" style={{ maxWidth: 170 }}>{c.name}</div>
+                          <div className="xs muted">{SOURCE_L[c.source] || c.source} · {ago(c.last_activity)}</div>
+                          {c.next_action && <button className={`badge tone-${c.next_action.tone} show-sm`} style={{ border: 'none', marginTop: 4 }} onClick={e => { e.stopPropagation(); runAction(c, c.next_action); }}>{c.next_action.l} →</button>}
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td className="hide-sm">
                       <a className="link small" href={profileUrl(c.tiktok_link)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>{c.handle ? '@' + c.handle : c.platform}</a>
-                      <div className="xs muted">{nicheLabel(c.niche)} · {c.content_type}</div>
+                      <div className="xs muted">{fmtNum(c.followers)} fl · <span style={{ color: `var(--${scoreTone(s)})` }}>ER {s.toFixed(2)}</span> · {nicheLabel(c.niche)}</div>
                     </td>
-                    <td className="tnum bold">{fmtNum(c.followers)}</td>
-                    <td><Badge tone={scoreTone(s)}>{s.toFixed(2)}{c.potential === 'high' ? ' ⚡' : ''}</Badge></td>
-                    <td className="tnum small">{c.sample_count} / {c.video_count}</td>
-                    <td className="tnum bold" style={{ color: c.gmv > 0 ? 'var(--brand-700)' : 'var(--muted)' }}>{c.gmv > 0 ? fmtMoney(c.gmv) : '—'}</td>
-                    <td><CreatorStatus s={c.status} />{c.screen_reason && ['pending', 'rejected'].includes(c.status) && <div className="xs muted ellipsis" style={{ maxWidth: 170 }} title={c.screen_reason}>{c.screen_reason}</div>}</td>
-                    <td onClick={e => e.stopPropagation()}>
-                      {['applied', 'pending'].includes(c.status) && (
-                        <div className="row" style={{ gap: 4 }}>
-                          <button className="btn btn-sm btn-primary" disabled={busy === c.id} onClick={() => quick(c.id, 'approved')}>Duyệt</button>
-                          <button className="btn btn-sm btn-danger" disabled={busy === c.id} onClick={() => quick(c.id, 'rejected')}>✕</button>
-                        </div>
-                      )}
+                    <td>
+                      <div className="row" style={{ gap: 6 }}>
+                        <b className="tnum" style={{ color: `var(--${healthTone(c.health)})`, minWidth: 24 }}>{c.health}</b>
+                        <div className="progress" style={{ width: 54 }}><span style={{ width: `${c.health}%`, background: `var(--${healthTone(c.health)})` }} /></div>
+                      </div>
+                      <Badge tone={TIERS[c.tier]?.tone}>{TIERS[c.tier]?.l}</Badge>
                     </td>
+                    <td className="small tnum hide-sm">
+                      <b style={{ color: c.gmv > 0 ? 'var(--brand-700)' : 'var(--muted)' }}>{c.gmv > 0 ? fmtMoney(c.gmv) + 'đ' : '—'}</b>
+                      <div className="xs muted">{c.gpv != null ? `${fmtNum(c.gpv)}đ/view` : 'chưa có view'}{c.on_time_rate != null ? ` · đúng hạn ${Math.round(c.on_time_rate * 100)}%` : ''}</div>
+                    </td>
+                    <td className="small tnum hide-sm">{c.sample_count} · {c.video_count} · {c.active_deals}{c.booked_fee > 0 && <div className="xs muted">phí {fmtMoney(c.booked_fee)}đ</div>}</td>
+                    <td className="hide-sm" onClick={e => e.stopPropagation()}>
+                      {a ? (
+                        a.key === 'review' ? (
+                          <div className="row" style={{ gap: 4 }}>
+                            <button className="btn btn-sm btn-primary" disabled={busy === c.id} onClick={() => quick(c.id, 'approved')}>Duyệt</button>
+                            <button className="btn btn-sm btn-danger" disabled={busy === c.id} onClick={() => quick(c.id, 'rejected')}>✕</button>
+                          </div>
+                        ) : <button className={`badge tone-${a.tone}`} style={{ border: 'none', cursor: 'pointer' }} onClick={() => runAction(c, a)}>{a.l} →</button>
+                      ) : <span className="xs muted">—</span>}
+                    </td>
+                    <td className="hide-sm"><CreatorStatus s={c.status} />{c.screen_reason && ['pending', 'rejected'].includes(c.status) && <div className="xs muted ellipsis" style={{ maxWidth: 150 }} title={c.screen_reason}>{c.screen_reason}</div>}</td>
                   </tr>
                 );
               })}
@@ -111,6 +176,7 @@ export default function Creators({ openCreator, initial = {}, toast }) {
           </div>
         )}
       </div>
+      {data?.health_formula && <div className="xs muted">Điểm sức khoẻ = {data.health_formula}</div>}
     </div>
   );
 }

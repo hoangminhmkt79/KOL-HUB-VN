@@ -90,6 +90,15 @@ function Composer({ groups, camps, toast, onChanged, draft, setDraft }) {
     } catch (e) { setErr(e.message); } finally { setBusy(''); }
   };
   const text = body || post?.body || '';
+  const isPage = group?.post_policy === 'page';
+  const publishPage = async () => {
+    setBusy('page'); setErr('');
+    try {
+      const r = await api(`/api/fb/posts/${post.id}`, { method: 'PATCH', body: { action: 'publish_page', message: text } });
+      toast('Đã đăng lên Fanpage'); setDraft(null); setBody(''); onChanged();
+      if (r.post?.post_url) window.open(r.post.post_url, '_blank', 'noopener');
+    } catch (e) { setErr(e.message); } finally { setBusy(''); }
+  };
 
   return (
     <div id="composer" className="card stack" style={{ gap: 12 }}>
@@ -126,7 +135,14 @@ function Composer({ groups, camps, toast, onChanged, draft, setDraft }) {
             {group?.url && <a className="btn" href={group.url} target="_blank" rel="noreferrer">↗ Mở group</a>}
             <button className="btn btn-sm" onClick={() => { setDraft(null); setBody(''); setErr(''); setWarn([]); }}>Soạn bài khác</button>
           </div>
-          <div style={{ borderTop: '1px solid var(--line-2)', paddingTop: 12 }} className="stack">
+          {isPage && (
+            <div className="stack" style={{ borderTop: '1px solid var(--line-2)', paddingTop: 12, gap: 8 }}>
+              <div className="small muted">Đây là <b>Fanpage của brand</b> — có thể đăng tự động qua Facebook API (được phép). Sau khi đăng, share bài từ Fanpage vào group bằng tay.</div>
+              {err && <div className="alert alert-error small">⚠ {err}</div>}
+              <button className="btn btn-accent" style={{ alignSelf: 'flex-start' }} disabled={busy === 'page'} onClick={publishPage}>{busy === 'page' ? 'Đang đăng…' : '🚀 Đăng lên Fanpage ngay'}</button>
+            </div>
+          )}
+          {!isPage && <div style={{ borderTop: '1px solid var(--line-2)', paddingTop: 12 }} className="stack">
             <div className="small muted">Sau khi <b>tự tay</b> đăng bài trong group, dán link bài viết để đo phễu:</div>
             <div className="grid g2" style={{ gap: 10 }}>
               <Field label="Người đăng *"><input className="input input-sm" value={poster} onChange={e => { setPoster(e.target.value); setErr(''); }} placeholder="Tên người thật đã đăng" /></Field>
@@ -134,7 +150,7 @@ function Composer({ groups, camps, toast, onChanged, draft, setDraft }) {
             </div>
             {err && <div className="alert alert-error small">⚠ {err}</div>}
             <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} disabled={busy === 'posted' || !postUrl.trim()} onClick={markPosted}>{busy === 'posted' ? 'Đang lưu…' : '✓ Đã đăng'}</button>
-          </div>
+          </div>}
         </>
       )}
     </div>

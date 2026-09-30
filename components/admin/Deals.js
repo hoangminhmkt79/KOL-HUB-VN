@@ -103,8 +103,8 @@ function Terms({ d }) {
   );
 }
 
-function OfferModal({ onClose, onSaved, toast, camps, rules }) {
-  const [creator, setCreator] = useState(null);
+function OfferModal({ onClose, onSaved, toast, camps, rules, preset = null }) {
+  const [creator, setCreator] = useState(preset);
   const [f, setF] = useState({ campaign_id: '', deal_type: 'hybrid', fee: '', commission_pct: '', videos: 1, spark_code: false, message: '', approved_by: '', override_reason: '' });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -367,7 +367,7 @@ function DealDrawer({ id, onClose, onChanged, toast, rules, openCreator }) {
 export default function Deals({ toast, openCreator, initial }) {
   const [status, setStatus] = useState(initial?.status || 'open');
   const [campaign, setCampaign] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(!!initial?.offerFor);
   const [openId, setOpenId] = useState(null);
   const { data, error, loading, reload } = useLoad(() => api(`/api/deals?status=${status}${campaign ? '&campaign=' + campaign : ''}`), [status, campaign]);
   const campsL = useLoad(() => api('/api/campaigns'), []);
@@ -432,7 +432,7 @@ export default function Deals({ toast, openCreator, initial }) {
         </div>
       )}
 
-      {creating && <OfferModal onClose={() => setCreating(false)} onSaved={reload} toast={toast} camps={camps} rules={rules} />}
+      {creating && <OfferModal onClose={() => setCreating(false)} onSaved={reload} toast={toast} camps={camps} rules={rules} preset={initial?.offerFor || null} />}
       {openId && <DealDrawer id={openId} onClose={() => setOpenId(null)} onChanged={reload} toast={toast} rules={rules} openCreator={openCreator} />}
     </div>
   );

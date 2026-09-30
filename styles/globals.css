@@ -247,3 +247,9 @@ p { margin: 0; }
   .mobnav button { flex: 1 0 58px; }
 }
 .grid.g2k { grid-template-columns: repeat(2, minmax(0,1fr)); }
+
+/* Bảng KOL: đầy đủ cột trên desktop, gọn trên mobile */
+.kol-table { min-width: 980px; }
+@media (max-width: 768px) { .kol-table { min-width: 0; } .kol-table td, .kol-table th { padding: 10px 8px; } }
+.show-sm { display: none !important; }
+@media (max-width: 768px) { .show-sm { display: inline-flex !important; } }

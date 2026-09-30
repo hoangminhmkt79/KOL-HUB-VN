@@ -37,8 +37,8 @@ cp .env.example .env.local     # điền DATABASE_URL + ADMIN_PASSWORD
 npm run dev                    # http://localhost:3000/admin
 ```
 
-Lần đầu: vào **Admin → Automation → Khởi tạo / nâng cấp DB**. Nút này chạy lại an toàn và nâng cấp được DB cũ.
-Hoặc chạy `npm run schema` rồi dán `database.sql` vào Neon SQL Editor.
+Database **tự tạo / nâng cấp** ở request đầu tiên sau mỗi lần deploy (idempotent, tắt bằng `AUTO_MIGRATE=0`).
+Vẫn có nút **Admin → Automation → Khởi tạo / nâng cấp DB** và `npm run schema` → `database.sql` nếu cần chạy tay.
 
 ### Deploy Vercel
 1. Import repo và thêm env: `DATABASE_URL`, `ADMIN_PASSWORD` (hoặc `ADMIN_HASH`), `SESSION_SECRET`, `CRON_SECRET`.
@@ -53,6 +53,15 @@ Seller Center → **Đơn hàng → Quản lý đơn → Xuất** → lưu **CSV
 Cần app trên TikTok Shop Partner Center được duyệt scope Order, và OAuth với shop để lấy `access_token` + `shop_cipher`.
 Client ký request theo chuẩn v2 và gọi `order/202309/orders/search` (xem `lib/tiktok.js`).
 Lưu ý: access token hết hạn định kỳ, cần refresh. Luồng CSV hoạt động độc lập, không cần API.
+
+## Bảng KOL
+Mỗi creator có: **điểm sức khoẻ 0–100** (30 engagement + 25 đúng hạn + 25 GMV/view + 20 hoạt động gần đây), **tier** (Seed/Pro/Partner),
+nguồn tuyển, GMV/view, tỷ lệ đúng hạn, và **việc tiếp theo** tự gợi ý (duyệt, nhắc video, xin địa chỉ, gửi mẫu, trả lời trả giá, gửi offer…).
+Phân khúc: Cần xử lý · Chưa có việc · Ra GMV. Thao tác hàng loạt + export toàn bộ theo bộ lọc.
+
+## Facebook
+- **Group:** không có API hợp lệ để đăng (Facebook bỏ Groups API 04/2024) → app soạn bài + link tracking, người thật đăng.
+- **Fanpage của brand:** tự đăng qua Graph API. Tạo "group" với quy định *Fanpage của brand*, đặt env `FB_PAGE_ID`, `FB_PAGE_TOKEN` (quyền `pages_manage_posts`).
 
 ## Bảo mật
 - API admin có cookie phiên HttpOnly ký HMAC. Dữ liệu cá nhân (SĐT, địa chỉ) không còn lộ công khai.

@@ -67,6 +67,7 @@ function Rules({ toast }) {
             ['Cron hằng ngày', it.cron, it.cron ? 'Chạy 8:00 sáng mỗi ngày (vercel.json)' : 'Env: CRON_SECRET'],
             ['Telegram', it.telegram, 'Env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID'],
             ['Webhook (Slack/Lark/n8n…)', it.webhook, 'Env: NOTIFY_WEBHOOK_URL'],
+            ['Fanpage Facebook (tự đăng)', it.fb_page, 'Env: FB_PAGE_ID, FB_PAGE_TOKEN — chỉ Fanpage của brand, không đăng group'],
           ].map(([l, on, hint]) => (
             <div key={l} className="row" style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '10px 12px', alignItems: 'flex-start' }}>
               <Badge tone={on ? 'green' : 'slate'} dot>{on ? 'Bật' : 'Tắt'}</Badge>
