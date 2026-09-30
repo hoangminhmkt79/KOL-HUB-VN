@@ -10,12 +10,14 @@ import Campaigns from '../../components/admin/Campaigns';
 import Automation from '../../components/admin/Automation';
 import Deals from '../../components/admin/Deals';
 import Recruit from '../../components/admin/Recruit';
+import Clients from '../../components/admin/Clients';
 
 const NAV = [
   ['overview', 'Tổng quan', '◎'],
   ['creators', 'Bảng KOL', '☺'],
   ['samples', 'Đơn mẫu', '▣'],
   ['videos', 'Video', '▶'],
+  ['clients', 'Khách hàng', '◆'],
   ['deals', 'Deals', '₫'],
   ['campaigns', 'Chiến dịch', '⚑'],
   ['recruit', 'Tuyển & Link', '✚'],
@@ -82,6 +84,7 @@ export default function Dashboard() {
           {tab === 'campaigns' && <Campaigns key={key} {...props} />}
           {tab === 'deals' && <Deals key={key} {...props} />}
           {tab === 'recruit' && <Recruit key={key} {...props} />}
+          {tab === 'clients' && <Clients key={key} {...props} />}
           {tab === 'automation' && <Automation key={key} {...props} />}
         </main>
 

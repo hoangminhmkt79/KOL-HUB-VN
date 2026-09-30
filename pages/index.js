@@ -339,7 +339,7 @@ export default function Home() {
         <div className="pub-wrap">
           <nav className="pub-nav">
             <div className="row"><div className="brand-logo">K</div><b>KOL Hub</b></div>
-            {view === 'landing' && <button className="btn btn-primary" onClick={apply}>Đăng ký</button>}
+            <div className="row"><a className="btn btn-sm hide-sm" href="/brands">Dành cho Brand →</a>{view === 'landing' && <button className="btn btn-primary" onClick={apply}>Đăng ký</button>}</div>
           </nav>
 
           {view === 'apply' && <ApplyForm initial={prefill} onBack={() => setView('landing')} onDone={r => { setRes(r); setView('done'); window.scrollTo(0, 0); }} />}

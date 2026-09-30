@@ -23,7 +23,7 @@ export async function getServerSideProps({ params, req, res }) {
       if (t.rows.length) {
         const l = t.rows[0];
         ok = true;
-        dest = `/?${new URLSearchParams({ utm_source: l.utm_source, utm_medium: l.utm_medium, utm_campaign: l.utm_campaign, utm_content: code, acq: code })}`;
+        dest = `${l.target === 'brand' ? '/brands' : '/'}?${new URLSearchParams({ utm_source: l.utm_source, utm_medium: l.utm_medium, utm_campaign: l.utm_campaign, utm_content: code, acq: code })}`;
       }
     }
   } catch (e) {

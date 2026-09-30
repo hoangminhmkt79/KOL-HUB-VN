@@ -18,7 +18,7 @@ async function list(req) {
   const links = r.rows.map(l => {
     const cost = Number(l.cost) || 0;
     const utm = { utm_source: l.utm_source, utm_medium: l.utm_medium, utm_campaign: l.utm_campaign, utm_content: l.code };
-    return { ...l, cost, gmv: Number(l.gmv), ...linksFor(origin, l.code, utm), cpa: l.activated ? Math.round(cost / l.activated) : null, cr: l.clicks ? Math.round((l.signups / l.clicks) * 1000) / 10 : null };
+    return { ...l, cost, gmv: Number(l.gmv), ...linksFor(origin, l.code, utm, l.target), cpa: l.activated ? Math.round(cost / l.activated) : null, cr: l.clicks ? Math.round((l.signups / l.clicks) * 1000) / 10 : null };
   });
   const tot = links.reduce((a, l) => ({ clicks: a.clicks + l.clicks, signups: a.signups + l.signups, activated: a.activated + l.activated }), { clicks: 0, signups: 0, activated: 0 });
   return { links, totals: tot, channels: CHANNELS };
@@ -31,6 +31,7 @@ async function create(req, res) {
   if (!source_name) bad('Đặt tên nguồn (vd: "Group Review Mỹ Phẩm HN – bài 01/10").');
   const angle = POST_ANGLES.some(a => a.v === b.angle) ? b.angle : 'fee';
   const cost = Math.max(0, toInt(b.cost));
+  const target = b.target === 'brand' ? 'brand' : 'creator';
   let campaign = null; let slotsLeft = null;
   if (b.campaign_id) {
     const c = await query(
@@ -49,11 +50,11 @@ async function create(req, res) {
   if (!code) bad('Không tạo được mã, thử lại.');
   const utm = utmFor({ channel, source_name, campaign, code });
   await query(
-    `INSERT INTO track_links (code, channel, source_name, campaign_id, angle, utm_source, utm_medium, utm_campaign, cost, note)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [code, channel, source_name, campaign?.id || null, angle, utm.utm_source, utm.utm_medium, utm.utm_campaign, cost, String(b.note || '').slice(0, 500)]
+    `INSERT INTO track_links (code, channel, source_name, campaign_id, angle, utm_source, utm_medium, utm_campaign, cost, note, target)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [code, channel, source_name, campaign?.id || null, angle, utm.utm_source, utm.utm_medium, utm.utm_campaign, cost, String(b.note || '').slice(0, 500), target]
   );
-  const links = linksFor(originOf(req), code, utm);
+  const links = linksFor(originOf(req), code, utm, target);
   const content = buildContents({ channel, campaign, code, link: links.short, rules: await getRules(), slotsLeft, angle });
   await logEvent(null, { type: 'link_created', actor: 'admin', message: `Tạo link tracking ${code} · ${channelOf(channel).l} · ${source_name}` });
   return res.status(201).json({ link: { code, channel, source_name, campaign_id: campaign?.id || null, ...utm, ...links }, content });

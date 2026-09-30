@@ -57,7 +57,7 @@ function ContentBox({ content, toast }) {
 }
 
 function LinkBuilder({ camps, channels, toast, onCreated }) {
-  const [f, setF] = useState({ channel: 'zalo', source_name: '', campaign_id: '', angle: 'fee', cost: '' });
+  const [f, setF] = useState({ channel: 'zalo', source_name: '', campaign_id: '', angle: 'fee', cost: '', target: 'creator' });
   const [out, setOut] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = k => e => setF(p => ({ ...p, [k]: e.target.value }));
@@ -76,6 +76,9 @@ function LinkBuilder({ camps, channels, toast, onCreated }) {
       {!out ? (
         <>
           <div className="grid g2" style={{ gap: 10 }}>
+            <Field label="Đích đến" hint={f.target === 'brand' ? 'Link dẫn về trang /brands — đo lead khách hàng' : 'Link dẫn về trang tuyển creator'}>
+              <select className="select" value={f.target} onChange={set('target')}><option value="creator">Tuyển creator (KOC/KOL)</option><option value="brand">Tìm khách hàng (Brand)</option></select>
+            </Field>
             <Field label="Kênh đăng"><select className="select" value={f.channel} onChange={set('channel')}>{(channels || []).map(c => <option key={c.v} value={c.v}>{c.l}</option>)}</select></Field>
             <Field label="Tên nguồn / bài *"><input className="input" value={f.source_name} onChange={set('source_name')} placeholder="VD: Zalo nhóm KOC Mẹ Bỉm – bài 01/10" /></Field>
             <Field label="Chiến dịch"><select className="select" value={f.campaign_id} onChange={set('campaign_id')}><option value="">Tuyển chung</option>{camps.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
@@ -124,10 +127,10 @@ export default function Links({ toast, openCreator, camps }) {
           <tbody>
             {links.map(l => (
               <tr key={l.code} className="clickable" onClick={() => setView(l.code)}>
-                <td><div className="bold ellipsis" style={{ maxWidth: 240 }}>{l.source_name}</div><div className="xs muted">{l.code} · {l.campaign_name || 'Tuyển chung'} · {fmtDate(l.created_at)}</div></td>
+                <td><div className="bold ellipsis" style={{ maxWidth: 240 }}>{l.source_name}</div><div className="xs muted">{l.target === 'brand' ? '🎯 Brand · ' : ''}{l.code} · {l.campaign_name || 'Tuyển chung'} · {fmtDate(l.created_at)}</div></td>
                 <td className="hide-sm small">{chLabel(l.channel)}</td>
                 <td className="tnum">{fmtNum(l.clicks)}</td>
-                <td className="tnum bold">{fmtNum(l.signups)}<div className="xs muted">{pct(l.signups, l.clicks)}</div></td>
+                <td className="tnum bold">{l.target === 'brand' ? <>{fmtNum(l.leads)} lead<div className="xs muted">{fmtNum(l.leads_won)} chốt</div></> : <>{fmtNum(l.signups)}<div className="xs muted">{pct(l.signups, l.clicks)}</div></>}</td>
                 <td className="hide-sm tnum">{fmtNum(l.approved)}</td>
                 <td className="hide-sm tnum">{fmtNum(l.booked)}</td>
                 <td className="tnum bold" style={{ color: l.activated > 0 ? 'var(--brand-700)' : undefined }}>{fmtNum(l.activated)}</td>
