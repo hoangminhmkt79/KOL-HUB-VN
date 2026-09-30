@@ -9,6 +9,7 @@ import { handleFromLink, NICHES, PLATFORMS, CTYPES } from '../../../lib/constant
 import { creatorTier } from '../../../lib/pricing';
 import { healthSql, nextAction, HEALTH_FORMULA } from '../../../lib/creatorIntel';
 import { parseRateCard, saveRateCard } from '../../../lib/rateCard';
+import { resolveAcq } from '../../../lib/attribution';
 
 const PAGE_SIZE = 20;
 const SORTS = {
@@ -135,10 +136,16 @@ async function create(req, res) {
 
   // Nguồn tuyển: mã bài đăng group FB (?acq= hoặc cookie kol_acq từ /j/[code])
   const acqRaw = String(b.acq || (req.headers.cookie || '').match(/(?:^|;\s*)kol_acq=([^;]+)/)?.[1] || '').toUpperCase().slice(0, 16);
-  let acq = null;
-  if (/^[A-Z0-9]{4,16}$/.test(acqRaw)) {
-    const r = await query('SELECT code FROM fb_posts WHERE code=$1', [acqRaw]);
-    acq = r.rows[0]?.code || null;
+  // UTM (từ link tracking hoặc link UTM tự dựng) — lưu nguyên để đối soát GA / Meta
+  const utm = {};
+  for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+    const v = b.utm && typeof b.utm === 'object' ? b.utm[k] : undefined;
+    if (v) utm[k] = String(v).slice(0, 100);
+  }
+  let acq = null; let acqSource = null;
+  {
+    const hit = await resolveAcq({ query }, acqRaw);
+    acq = hit?.code || null; acqSource = hit?.source || null;
   }
 
   const rules = await getRules();
@@ -162,7 +169,7 @@ async function create(req, res) {
       row = r.rows[0];
     } else {
       const all = { ...fields, portal_token: randomToken(), ref_code: randomCode(), referred_by: referredBy,
-        source: acq ? 'fb_group' : referredBy ? 'referral' : 'form', acq_code: acq, consent_at: new Date(), status: 'applied' };
+        source: acqSource || (referredBy ? 'referral' : 'form'), acq_code: acq, utm: JSON.stringify(utm), consent_at: new Date(), status: 'applied' };
       const keys = Object.keys(all);
       const r = await db.query(
         `INSERT INTO creators (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`,
@@ -170,7 +177,7 @@ async function create(req, res) {
       );
       row = r.rows[0];
     }
-    await logEvent(db, { type: 'creator_applied', creator_id: row.id, actor: 'creator', message: `Đăng ký mới · ${followers.toLocaleString('vi-VN')} followers · score ${score}${referredBy ? ' · qua giới thiệu' : ''}${acq ? ` · từ group FB (${acq})` : ''}` });
+    await logEvent(db, { type: 'creator_applied', creator_id: row.id, actor: 'creator', message: `Đăng ký mới · ${followers.toLocaleString('vi-VN')} followers · score ${score}${referredBy ? ' · qua giới thiệu' : ''}${acq ? ` · nguồn ${acqSource} (${acq})` : utm.utm_source ? ` · UTM ${utm.utm_source}/${utm.utm_medium || '-'}` : ''}` });
     if (rateCard) {
       await saveRateCard(db, row.id, rateCard);
       const fee = rateCard.video_fee ? `${rateCard.video_fee.toLocaleString('vi-VN')}đ/video` : 'barter';

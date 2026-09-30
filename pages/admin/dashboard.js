@@ -18,7 +18,7 @@ const NAV = [
   ['videos', 'Video', '▶'],
   ['deals', 'Deals', '₫'],
   ['campaigns', 'Chiến dịch', '⚑'],
-  ['recruit', 'Tuyển FB', '✚'],
+  ['recruit', 'Tuyển & Link', '✚'],
   ['automation', 'Automation', '⚙'],
 ];
 

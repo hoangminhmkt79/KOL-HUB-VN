@@ -124,6 +124,58 @@ function UnmatchedModal({ onClose, onSaved, toast }) {
   );
 }
 
+
+// Hướng dẫn chuẩn bị + kết nối hàng mẫu (2 cách) + file CSV mẫu khi tự gửi hàng
+function SampleGuide() {
+  const [open, setOpen] = useState(false);
+  const template = () => downloadCsv('mau-import-don-mau.csv',
+    ['Mã đơn hàng', 'Trạng thái đơn hàng', 'Mã vận đơn', 'Đơn vị vận chuyển', 'Số điện thoại', 'Người nhận', 'Tên sản phẩm', 'Tổng tiền'],
+    [['MAU-0001', 'Chờ lấy hàng', '', 'GHN', '0901234567', 'Nguyễn Văn A', 'Serum B5 30ml', '0'],
+     ['MAU-0002', 'Đang giao', 'GHNABC123', 'GHN', '0912345678', 'Trần Thị B', 'Serum B5 30ml', '0'],
+     ['MAU-0003', 'Đã giao', 'SPXVN0001', 'SPX', '0987654321', 'Lê Văn C', 'Vitamin C sủi', '0']]);
+  return (
+    <div className="card" style={{ padding: '12px 16px' }}>
+      <div className="row-between" style={{ cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
+        <b className="small">📦 Chuẩn bị & kết nối hàng mẫu — làm thế nào?</b>
+        <span className="small muted">{open ? 'Thu gọn ▲' : 'Xem hướng dẫn ▼'}</span>
+      </div>
+      {open && (
+        <div className="stack small" style={{ gap: 12, marginTop: 12 }}>
+          <div>
+            <div className="label">Chuẩn bị (1 lần / chiến dịch)</div>
+            <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+              <li>Tách <b>tồn kho mẫu</b> riêng (SKU mẫu hoặc số lượng dành riêng), ghi <b>giá vốn + ship / mẫu</b> vào chiến dịch → app tính ROI mẫu.</li>
+              <li>Tạo <b>chiến dịch</b> (tab Chiến dịch): sản phẩm, số slot, brief, claim được/cấm.</li>
+              <li>Creator dùng <b>đúng SĐT đã đăng ký</b> khi nhận hàng → app tự map đơn. Địa chỉ chi tiết creator tự điền trong portal sau khi được duyệt.</li>
+            </ol>
+          </div>
+          <div className="grid g2" style={{ gap: 12 }}>
+            <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 12 }}>
+              <b>Cách 1 — Mẫu qua TikTok Shop (khuyên dùng)</b>
+              <ol style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
+                <li>Seller Center → <b>Affiliate / Tiếp thị liên kết</b> → bật <b>mẫu miễn phí</b> cho sản phẩm (hoặc Target Collaboration kèm mẫu).</li>
+                <li>Creator đã duyệt trong app → gửi lời mời trên TikTok, creator xin mẫu → bạn duyệt → TikTok tạo <b>đơn 0đ</b>.</li>
+                <li>Mỗi ngày: <b>Đơn hàng → Xuất</b> CSV → bấm <b>Import CSV đơn TikTok</b> ở trên. App chỉ lấy đơn 0đ, tự map creator theo SĐT, cập nhật đang giao / đã nhận, đặt hạn video.</li>
+                <li>Có API TikTok Shop (Partner Center) → khỏi import, cron tự đồng bộ.</li>
+              </ol>
+            </div>
+            <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 12 }}>
+              <b>Cách 2 — Tự gửi (GHN / GHTK / J&T / SPX)</b>
+              <ol style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
+                <li>Lấy địa chỉ creator ở Bảng KOL (hoặc drawer creator) → tạo vận đơn bên hãng vận chuyển.</li>
+                <li>Ít đơn: bấm <b>＋ Tạo tay</b>, nhập mã vận đơn → creator thấy link tra cứu trong portal.</li>
+                <li>Nhiều đơn: điền <b>file CSV mẫu</b> (mã đơn tự đặt, SĐT creator, mã vận đơn, trạng thái) → Import. Cập nhật trạng thái bằng cách import lại cùng mã đơn.</li>
+              </ol>
+              <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={template}>⬇ Tải file CSV mẫu</button>
+            </div>
+          </div>
+          <div className="xs muted">Sau khi đã giao: app đặt hạn đăng video (mặc định 7 ngày), tự nhắc trước 2 ngày, báo trễ hạn; creator nộp link video trong portal → đơn mẫu tự chuyển "Đã có video".</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Samples({ toast, openCreator, initial = {} }) {
   const [view, setView] = useState('board');
   const [search, setSearch] = useState('');
@@ -177,6 +229,8 @@ export default function Samples({ toast, openCreator, initial = {} }) {
           {data?.unmatched > 0 && <button className="btn btn-accent" onClick={() => setModal({ type: 'unmatched' })}>{data.unmatched} đơn chưa map</button>}
         </div>
       </div>
+
+      <SampleGuide />
 
       <div className="alert alert-info small">
         <span>💡</span>
