@@ -1,30 +1,14 @@
-// Server-side auth — mật khẩu KHÔNG bao giờ expose ra client
-const HASH = process.env.ADMIN_HASH;
+import { checkPassword, setSessionCookie, adminHash } from '../../../lib/auth';
 
-function sha256(str) {
-  // Node.js crypto — chạy server-side only
-  const crypto = require('crypto');
-  return crypto.createHash('sha256').update(str).digest('hex');
-}
-
-export default function handler(req, res) {
-  if (req.method !== 'POST')
-    return res.status(405).end();
-
-  const { password } = req.body;
-  if (!password)
-    return res.status(400).json({ ok: false });
-
-  const inputHash = sha256(password);
-
-  if (inputHash === HASH) {
-    // Trả về token ngắn hạn (session token đơn giản)
-    const token = sha256(HASH + Date.now().toString().slice(0, -4)); // valid ~10 phút
-    return res.status(200).json({ ok: true, token });
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).end();
+  if (!adminHash()) return res.status(500).json({ ok: false, error: 'Chưa cấu hình ADMIN_HASH hoặc ADMIN_PASSWORD.' });
+  const { password } = req.body || {};
+  if (checkPassword(password)) {
+    setSessionCookie(res);
+    return res.status(200).json({ ok: true });
   }
-
-  // Delay 500ms để chống brute force
-  setTimeout(() => {
-    res.status(401).json({ ok: false, error: 'Sai mật khẩu.' });
-  }, 500);
+  // Chậm lại để chống dò mật khẩu
+  await new Promise(r => setTimeout(r, 600));
+  return res.status(401).json({ ok: false, error: 'Sai mật khẩu.' });
 }
