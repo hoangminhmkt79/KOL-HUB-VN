@@ -1,15 +1,20 @@
 {
   "name": "kol-hub",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "schema": "node scripts/export-schema.js",
+    "hash": "node -e \"console.log(require('crypto').createHash('sha256').update(process.argv[1]).digest('hex'))\""
   },
   "dependencies": {
     "next": "14.2.29",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "pg": "^8.12.0"
+  },
+  "engines": {
+    "node": ">=18.17"
   }
 }
