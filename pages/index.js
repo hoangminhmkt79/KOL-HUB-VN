@@ -1,9 +1,81 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { NICHES, PLATFORMS, CTYPES, CITIES, GMV_OPTS, nicheLabel, fmtNum, fmtDate } from '../lib/constants';
+import { NICHES, PLATFORMS, CTYPES, CITIES, GMV_OPTS, dealTypeLabel, nicheLabel, fmtNum, fmtDate, fmtMoney } from '../lib/constants';
+import { payoutSplit, NICHE_MULT } from '../lib/pricing';
+import { Modal, Stat, vnd } from '../components/ui';
 
-const EMPTY = { name: '', email: '', phone: '', link: '', followers: '', avg_views: '', avg_viewers: '', platform: 'TikTok', ct: '', niche: '', gmv_kenh: '', address: '', website: '' };
+// Mặc định công bố (docs/DEBATE.md) — campaign có thể ghi đè cọc / hạn trả
+const PAY = { deposit_pct: 30, payment_days: 7, pit_threshold: 2000000, pit_rate_pct: 10 };
+let PAY_DEFAULTS = PAY;
+const payOf = c => ({ ...PAY_DEFAULTS, ...(c?.deposit_pct !== undefined && c?.deposit_pct !== null ? { deposit_pct: Number(c.deposit_pct) } : {}), ...(c?.payment_days ? { payment_days: Number(c.payment_days) } : {}), ...(c?.pit_threshold ? { pit_threshold: Number(c.pit_threshold) } : {}), ...(c?.pit_rate_pct ? { pit_rate_pct: Number(c.pit_rate_pct) } : {}) });
+const isBarter = c => c.deal_type === 'barter' || (!Number(c.fee_min) && !Number(c.fee_max));
+const feeText = c => (isBarter(c) ? 'Mẫu miễn phí + hoa hồng' : Number(c.fee_max) > Number(c.fee_min) ? `${fmtMoney(c.fee_min)} – ${fmtMoney(c.fee_max)}đ` : `${fmtMoney(c.fee_min || c.fee_max)}đ`);
+const lines = t => String(t || '').split(/\n+/).map(x => x.replace(/^[-•*\s]+/, '').trim()).filter(Boolean);
+
+function PayBreakdown({ fee, pay }) {
+  const parts = payoutSplit(fee, pay.deposit_pct, pay);
+  if (!parts.length) return null;
+  const label = { deposit: `Cọc ${pay.deposit_pct}% — khi chốt deal`, final: `Phần còn lại — trong ${pay.payment_days} ngày sau khi video được duyệt` };
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {parts.map(p => (
+        <div key={p.kind} style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '8px 10px' }}>
+          <div className="xs bold muted" style={{ marginBottom: 4 }}>{label[p.kind]}</div>
+          <div className="money-row">
+            <span className="muted">Gross</span><span>{vnd(p.gross)}</span>
+            <span className="muted">TNCN {p.pit ? `${pay.pit_rate_pct}%` : '(dưới ngưỡng)'}</span><span style={{ color: p.pit ? 'var(--red)' : undefined }}>{p.pit ? `−${vnd(p.pit)}` : '0đ'}</span>
+            <span className="bold">Bạn nhận</span><span className="bold" style={{ color: 'var(--brand-700)' }}>{vnd(p.net)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BriefModal({ c, onClose, onApply }) {
+  const pay = payOf(c);
+  const fee = Number(c.fee_max) || Number(c.fee_min) || 0;
+  const ok = lines(c.claims_allowed), ban = lines(c.claims_banned);
+  return (
+    <Modal onClose={onClose} title={c.name}>
+      <div className="stack" style={{ gap: 14 }}>
+        <div className="row wrap" style={{ gap: 6 }}>
+          {c.brand_name && <span className="badge tone-blue">Brand: {c.brand_name}</span>}
+          <span className="badge tone-violet">{dealTypeLabel(c.deal_type || 'barter')}</span>
+          <span className="badge tone-green">{c.niche ? nicheLabel(c.niche) : 'Mọi lĩnh vực'}</span>
+          {c.slots_left !== undefined && <span className={`badge tone-${c.slots_left > 3 ? 'blue' : 'red'}`}>Còn {c.slots_left} slot</span>}
+        </div>
+        <div className="small muted">{c.product}{c.format ? ` · ${c.format}` : ''}{c.end_date ? ` · hạn ${fmtDate(c.end_date)}` : ''}</div>
+        <div className="grid g2 g2k" style={{ gap: 8 }}>
+          <Stat label="Phí booking (gross)" value={feeText(c)} />
+          <Stat label="Hoa hồng" value={`${Number(c.commission_pct) || 0}% / đơn`} />
+          <Stat label="Số video" value={isBarter(c) ? '1 video' : `${c.posts_per || 1} video`} />
+          <Stat label="Số lần sửa" value={`Tối đa ${c.revisions ?? 1} lần`} />
+        </div>
+        {c.brief && <div><div className="label">Brief</div><p className="small" style={{ whiteSpace: 'pre-line' }}>{c.brief}</p></div>}
+        {c.req && <div><div className="label">Yêu cầu nội dung</div><p className="small" style={{ whiteSpace: 'pre-line' }}>{c.req}</p></div>}
+        {(ok.length > 0 || ban.length > 0) && (
+          <div className="grid g2" style={{ gap: 10 }}>
+            <div><div className="label" style={{ color: 'var(--green)' }}>✓ Được nói</div>{ok.length ? ok.map(x => <div key={x} className="small">• {x}</div>) : <div className="small muted">—</div>}</div>
+            <div><div className="label" style={{ color: 'var(--red)' }}>✕ Không được nói</div>{ban.length ? ban.map(x => <div key={x} className="small">• {x}</div>) : <div className="small muted">—</div>}</div>
+          </div>
+        )}
+        {c.note && <div className="alert alert-error small">⚠ {c.note}</div>}
+        <div>
+          <div className="label">Thanh toán {fee > 0 ? `— ví dụ với phí ${vnd(fee)}` : ''}</div>
+          {fee > 0 ? <PayBreakdown fee={fee} pay={pay} /> : <div className="small">Barter: nhận sản phẩm mẫu miễn phí + {Number(c.commission_pct) || 0}% hoa hồng mỗi đơn. Không phạt nếu video không ra đơn.</div>}
+          {fee > 0 && <div className="xs muted" style={{ marginTop: 6 }}>Khấu trừ thuế TNCN {pay.pit_rate_pct}% với mỗi lần trả từ {vnd(pay.pit_threshold)} trở lên, theo quy định. Phí công bố là gross (trước thuế).</div>}
+        </div>
+        {c.contact_name && <div className="small">👤 Người liên hệ: <b>{c.contact_name}</b></div>}
+        <button className="btn btn-primary btn-block" disabled={c.slots_left !== undefined && c.slots_left <= 0} onClick={onApply}>Đăng ký để ứng tuyển</button>
+        <div className="hint" style={{ textAlign: 'center', marginTop: -6 }}>Sau khi được duyệt, bạn đề xuất giá hoặc nhận offer trong trang cá nhân.</div>
+      </div>
+    </Modal>
+  );
+}
+
+const EMPTY = { name: '', email: '', phone: '', link: '', followers: '', avg_views: '', avg_viewers: '', platform: 'TikTok', ct: '', niche: '', gmv_kenh: '', address: '', website: '', consent: false };
 const calcScore = (f, v) => { const F = parseInt(f) || 0; return F > 0 ? Math.round(((parseInt(v) || 0) / F) * 100) / 100 : 0; };
 const scoreTone = s => (s >= 0.3 ? 'green' : s >= 0.15 ? 'amber' : 'red');
 const scoreText = s => (s >= 0.3 ? 'Rất tốt — ưu tiên duyệt' : s >= 0.15 ? 'Tốt — có tiềm năng' : 'Còn thấp — nên cải thiện chất lượng content');
@@ -13,7 +85,7 @@ function ApplyForm({ initial, onDone, onBack }) {
   const [form, setForm] = useState({ ...EMPTY, ...initial });
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
-  const set = k => e => { setForm(p => ({ ...p, [k]: e.target.value })); setErr(''); };
+  const set = k => e => { setForm(p => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })); setErr(''); };
   const pick = (k, v) => { setForm(p => ({ ...p, [k]: v })); setErr(''); };
   const score = calcScore(form.followers, form.avg_views);
   const showLive = form.ct === 'livestream' || form.ct === 'both';
@@ -32,6 +104,7 @@ function ApplyForm({ initial, onDone, onBack }) {
   };
   const submit = async () => {
     if (!form.address) return setErr('Chọn tỉnh/thành nhận mẫu.');
+    if (!form.consent) return setErr('Vui lòng tick đồng ý xử lý dữ liệu cá nhân để gửi đơn.');
     setLoading(true);
     try {
       const r = await fetch('/api/creators', {
@@ -40,7 +113,7 @@ function ApplyForm({ initial, onDone, onBack }) {
           name: form.name, email: form.email, phone: form.phone.replace(/\s/g, ''), tiktok_link: form.link,
           followers: form.followers, avg_views: form.avg_views, avg_viewers: form.avg_viewers,
           platform: form.platform, content_type: form.ct, niche: form.niche, channel_gmv: form.gmv_kenh,
-          address: form.address, ref: form.ref, website: form.website,
+          address: form.address, ref: form.ref, website: form.website, consent: true, ...(form.acq ? { acq: form.acq } : {}),
         }),
       });
       const d = await r.json();
@@ -124,7 +197,14 @@ function ApplyForm({ initial, onDone, onBack }) {
               ))}
             </div>
           </div>
-          <button className="btn btn-primary btn-lg btn-block" disabled={loading} onClick={submit}>{loading ? 'Đang gửi…' : 'Gửi đơn đăng ký'}</button>
+          <label className="chk" style={{ background: form.consent ? 'var(--brand-50)' : 'var(--surface-2)', borderRadius: 12, padding: 12 }}>
+            <input type="checkbox" checked={form.consent} onChange={set('consent')} />
+            <span>
+              <b>Tôi đồng ý</b> cho KOL Hub xử lý dữ liệu cá nhân (họ tên, SĐT/email, link và số liệu kênh, tỉnh/thành) để xét duyệt, ghép chiến dịch, gửi mẫu và liên hệ hợp tác, theo <b>Nghị định 13/2023/NĐ-CP</b>.
+              <span className="muted"> Bạn có thể yêu cầu xem, sửa, xoá dữ liệu hoặc rút lại đồng ý bất cứ lúc nào. Chưa thu CCCD / số tài khoản ở bước này. *</span>
+            </span>
+          </label>
+          <button className="btn btn-primary btn-lg btn-block" disabled={loading || !form.consent} onClick={submit}>{loading ? 'Đang gửi…' : 'Gửi đơn đăng ký'}</button>
           <div className="hint" style={{ textAlign: 'center' }}>Thông tin chỉ dùng để gửi mẫu và liên lạc — không chia sẻ bên thứ ba.</div>
         </div>
       )}
@@ -159,26 +239,30 @@ export default function Home() {
   const [pub, setPub] = useState(null);
   const [res, setRes] = useState(null);
   const [prefill, setPrefill] = useState({});
+  const [brief, setBrief] = useState(null);
 
   useEffect(() => { fetch('/api/public/campaigns').then(r => r.json()).then(setPub).catch(() => setPub({ campaigns: [], stats: {} })); }, []);
   useEffect(() => {
     if (!router.isReady) return;
-    const { ref, h } = router.query;
+    const { ref, h, acq } = router.query;
     const p = {};
     if (ref) p.ref = String(ref);
+    if (acq) p.acq = String(acq).slice(0, 16);
     if (h) { p.link = `tiktok.com/@${String(h).replace(/^@/, '')}`; }
     setPrefill(p);
     if (h) setView('apply');
   }, [router.isReady, router.query]);
 
-  const apply = () => { setView('apply'); window.scrollTo(0, 0); };
+  const apply = () => { setBrief(null); setView('apply'); window.scrollTo(0, 0); };
+  if (pub?.terms) PAY_DEFAULTS = { ...PAY, ...pub.terms };
+  const pay = payOf(pub?.campaigns?.[0]);
   const camps = pub?.campaigns || [];
   const stats = pub?.stats || {};
 
   return (
     <>
       <Head>
-        <title>KOL Hub · Tuyển creator nhận mẫu miễn phí</title>
+        <title>KOL Hub · Tuyển creator — phí công khai, trả đúng hạn</title>
         <meta name="description" content="Đăng ký làm creator: nhận sản phẩm mẫu miễn phí, được boost ads, hoa hồng rõ ràng. Duyệt tự động, theo dõi đơn mẫu minh bạch." />
       </Head>
       <div className="hero" style={{ minHeight: '100vh' }}>
@@ -196,15 +280,15 @@ export default function Home() {
               <section className="hero-grid">
                 <div className="stack" style={{ gap: 18 }}>
                   <span className="pill" style={{ alignSelf: 'flex-start' }}><span className="dot" style={{ color: 'var(--brand)' }} />{camps.length ? `${camps.length} chiến dịch đang tuyển` : 'Đang mở đăng ký creator'}</span>
-                  <h1>Nhận mẫu miễn phí.<br /><em>Làm content thật.</em><br />Tăng thu nhập bền vững.</h1>
-                  <p className="muted" style={{ fontSize: 16, maxWidth: 470 }}>Không cần triệu follower — chúng tôi ưu tiên creator có <b style={{ color: 'var(--ink)' }}>tỉ lệ xem thật cao</b>. Duyệt tự động, theo dõi đơn mẫu và hạn đăng bài minh bạch trong một link.</p>
+                  <h1>Brand rõ ràng.<br /><em>Phí công khai.</em><br />Trả tiền đúng hạn.</h1>
+                  <p className="muted" style={{ fontSize: 16, maxWidth: 470 }}>Xem trước brand, brief, mức phí, % hoa hồng và lịch thanh toán <b style={{ color: 'var(--ink)' }}>trước khi đăng ký</b>. Cọc {pay.deposit_pct}% khi chốt, phần còn lại trả trong {pay.payment_days} ngày sau khi video được duyệt. Không cần triệu follower — chúng tôi ưu tiên <b style={{ color: 'var(--ink)' }}>tỉ lệ xem thật</b>.</p>
                   <div className="row wrap">
                     <button className="btn btn-primary btn-lg" onClick={apply}>Đăng ký ngay — miễn phí</button>
                     <a className="btn btn-lg" href="#campaigns">Xem chiến dịch</a>
                   </div>
                   {stats.creators >= 10 && (
                     <div className="row" style={{ gap: 26, marginTop: 6 }}>
-                      {[[stats.creators, 'creator đang hợp tác'], [stats.samples, 'mẫu đã gửi'], [stats.videos, 'video đã đăng']].map(([v, l]) => (
+                      {[[stats.creators, 'creator đang hợp tác'], [stats.samples, 'mẫu đã gửi'], [stats.videos, 'video đã đăng'], ...(Number(stats.paid_on_time) > 0 ? [[stats.paid_on_time, 'lần đã thanh toán']] : [])].map(([v, l]) => (
                         <div key={l}><div style={{ fontSize: 24, fontWeight: 900, color: 'var(--brand-700)' }} className="tnum">{fmtNum(v)}</div><div className="xs muted">{l}</div></div>
                       ))}
                     </div>
@@ -215,9 +299,9 @@ export default function Home() {
                   <div className="bold" style={{ marginBottom: 14 }}>Hành trình của bạn</div>
                   {[
                     ['📝', 'Đăng ký 2 phút', 'Hồ sơ đạt chuẩn được duyệt tự động ngay lập tức'],
-                    ['📦', 'Nhận mẫu tận nhà', 'Theo dõi mã vận đơn realtime trong trang cá nhân'],
+                    ['🤝', 'Nhận offer hoặc tự báo giá', 'Nhận / trả giá / từ chối trong 1 chạm, có hạn trả lời rõ ràng'],
                     ['🎬', 'Đăng video, dán link', 'Hệ thống tự xác minh video đúng kênh của bạn'],
-                    ['💸', 'Hoa hồng + boost ads', 'Video tốt được đẩy ads, mời vào chiến dịch lớn hơn'],
+                    ['💸', 'Nhận phí + hoa hồng', `Cọc ${pay.deposit_pct}% khi chốt, phần còn lại trong ${pay.payment_days} ngày sau duyệt video`],
                   ].map(([ic, t, s], i) => (
                     <div key={t} className="benefit" style={{ padding: '10px 0', borderTop: i ? '1px solid var(--line-2)' : 'none' }}>
                       <div className="benefit-ico">{ic}</div>
@@ -233,22 +317,57 @@ export default function Home() {
                 </div>
                 {camps.length ? (
                   <div className="grid g3">
-                    {camps.map(c => (
-                      <div key={c.id} className="card stack" style={{ gap: 8 }}>
-                        <div className="row-between"><span className="badge tone-green">{c.niche ? nicheLabel(c.niche) : 'Mọi lĩnh vực'}</span><span className={`badge tone-${c.slots_left > 3 ? 'blue' : 'red'}`}>Còn {c.slots_left} slot</span></div>
-                        <h3 style={{ fontSize: 17 }}>{c.name}</h3>
-                        <div className="small muted">{c.product}{c.format ? ` · ${c.format}` : ''}</div>
-                        {c.brief && <p className="small" style={{ color: 'var(--ink-2)' }}>{c.brief}</p>}
-                        <div className="row-between" style={{ marginTop: 'auto' }}>
-                          <span className="xs muted">{c.end_date ? `Hạn ${fmtDate(c.end_date)}` : ''}</span>
-                          <button className="btn btn-primary btn-sm" disabled={c.slots_left <= 0} onClick={apply}>Ứng tuyển</button>
+                    {camps.map(c => {
+                      const cp = payOf(c);
+                      return (
+                        <div key={c.id} className="card stack" style={{ gap: 10 }}>
+                          <div className="row-between"><span className="badge tone-violet">{dealTypeLabel(c.deal_type || 'barter')}</span><span className={`badge tone-${c.slots_left > 3 ? 'blue' : 'red'}`}>Còn {c.slots_left ?? '—'} slot</span></div>
+                          <div>
+                            {c.brand_name && <div className="xs bold" style={{ color: 'var(--brand-700)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{c.brand_name}</div>}
+                            <h3 style={{ fontSize: 17 }}>{c.name}</h3>
+                            <div className="small muted">{c.product}{c.niche ? ` · ${nicheLabel(c.niche)}` : ''}</div>
+                          </div>
+                          {(c.brief_short || c.brief) && <p className="small" style={{ color: 'var(--ink-2)' }}>{c.brief_short || String(c.brief).slice(0, 220)}{String(c.brief || '').length > 220 ? '…' : ''}</p>}
+                          <div className="grid g2 g2k" style={{ gap: 6 }}>
+                            <Stat label="Phí / creator" value={feeText(c)} />
+                            <Stat label="Hoa hồng" value={`${Number(c.commission_pct) || 0}%`} />
+                          </div>
+                          <div className="xs muted">{isBarter(c) ? `💳 Barter · 1 video · không phạt` : `💳 Cọc ${cp.deposit_pct}% · trả nốt trong ${cp.payment_days} ngày sau duyệt · ${c.posts_per || 1} video`}</div>
+                          <div className="row-between" style={{ marginTop: 'auto' }}>
+                            <span className="xs muted">{c.end_date ? `Hạn ${fmtDate(c.end_date)}` : ''}</span>
+                            <div className="row" style={{ gap: 6 }}>
+                              <button className="btn btn-sm" onClick={() => setBrief(c)}>Xem brief</button>
+                              <button className="btn btn-primary btn-sm" disabled={c.slots_left <= 0} onClick={apply}>Ứng tuyển</button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="card empty">Chiến dịch mới sẽ mở sớm — đăng ký trước để được ưu tiên ghép.</div>
                 )}
+              </section>
+
+              <section style={{ paddingBottom: 50 }}>
+                <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 14 }}>Cam kết thanh toán</h2>
+                <div className="grid g-main">
+                  <div className="card stack" style={{ gap: 12 }}>
+                    {[
+                      ['💰', `Cọc ${pay.deposit_pct}% ngay khi chốt deal`, 'Không phải chờ video lên mới có tiền.'],
+                      ['📅', `Phần còn lại trong ${pay.payment_days} ngày`, 'Tính từ lúc video được duyệt. Quá hạn bạn thấy ngay trong trang cá nhân.'],
+                      ['🧾', `Thuế TNCN ${pay.pit_rate_pct}% hiển thị minh bạch`, `Chỉ khấu trừ với mỗi lần trả từ ${vnd(pay.pit_threshold)}. Mọi khoản đều ghi rõ gross → thuế → thực nhận.`],
+                      ['📐', 'Giá hợp lý công khai', `views TB / 1000 × CPM × hệ số ngành (${Object.entries(NICHE_MULT).filter(([, m]) => m > 1).map(([k, m]) => `${nicheLabel(k)} ×${m}`).join(', ')}). Bạn tự báo giá được — bảng giá chỉ để tham khảo.`],
+                    ].map(([ic, t, s]) => (
+                      <div key={t} className="benefit"><div className="benefit-ico">{ic}</div><div><div className="bold small">{t}</div><div className="xs muted">{s}</div></div></div>
+                    ))}
+                  </div>
+                  <div className="card">
+                    <div className="bold small" style={{ marginBottom: 10 }}>Ví dụ: deal phí 3.000.000đ</div>
+                    <PayBreakdown fee={3000000} pay={pay} />
+                    <div className="xs muted" style={{ marginTop: 8 }}>Tổng thực nhận {vnd(payoutSplit(3000000, pay.deposit_pct, pay).reduce((a, p) => a + p.net, 0))} + hoa hồng mỗi đơn.</div>
+                  </div>
+                </div>
               </section>
 
               <section style={{ paddingBottom: 60 }}>
@@ -273,6 +392,7 @@ export default function Home() {
           )}
         </div>
       </div>
+      {brief && <BriefModal c={brief} onClose={() => setBrief(null)} onApply={apply} />}
     </>
   );
 }

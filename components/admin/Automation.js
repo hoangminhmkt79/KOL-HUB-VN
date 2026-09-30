@@ -20,6 +20,30 @@ const RULE_FIELDS = [
     ['scale_min_gmv', 'Chuyển Scaling khi GMV ≥ (VNĐ)', 'num'],
     ['scale_min_views', 'hoặc tổng views ≥', 'num'],
   ]],
+  ['Deal & kinh tế', [
+    ['cpm_vnd', 'CPM công khai (VNĐ / 1000 views)', 'num'],
+    ['gross_margin_pct', 'Biên gộp (%)', 'num'],
+    ['platform_fee_pct', 'Phí sàn (%)', 'num'],
+    ['payment_fee_pct', 'Phí thanh toán (%)', 'num'],
+    ['return_rate_pct', 'Tỷ lệ hoàn / huỷ (%)', 'num'],
+    ['default_gmv_per_view', 'GMV / view mặc định ngành (VNĐ)', 'num'],
+    ['safety_factor', 'Hệ số an toàn trần phí (0–1)', 'num'],
+    ['aov_vnd', 'Giá trị đơn TB (VNĐ)', 'num'],
+    ['seed_fee_cap', 'Trần phí creator Seed (VNĐ)', 'num'],
+    ['approve_ops_max', 'Ops tự duyệt đến (VNĐ)', 'num'],
+    ['approve_manager_max', 'Manager duyệt đến (VNĐ) — trên mức này cần CFO', 'num'],
+    ['max_open_deals', 'Số deal đang chạy tối đa / creator', 'num'],
+    ['deal_rounds_max', 'Số vòng thương lượng tối đa', 'num'],
+    ['brand_reply_hours', 'Brand phải trả lời trong (giờ)', 'num'],
+    ['creator_reply_hours', 'Creator trả lời trong (giờ)', 'num'],
+    ['deposit_pct', 'Cọc mặc định (%)', 'num'],
+    ['payment_days', 'Trả phần còn lại trong (ngày sau duyệt video)', 'num'],
+    ['pit_threshold', 'Khấu trừ TNCN khi mỗi lần trả ≥ (VNĐ)', 'num'],
+    ['pit_rate_pct', 'Thuế TNCN (%)', 'num'],
+  ]],
+  ['Tuyển qua group FB', [
+    ['fb_default_cooldown_days', 'Nghỉ giữa 2 bài trong 1 group (ngày, mặc định)', 'num'],
+  ]],
   ['Map đơn TikTok', [
     ['only_zero_value_orders', 'Chỉ lấy đơn 0đ (đơn mẫu) khi import / sync', 'bool'],
   ]],
@@ -60,7 +84,7 @@ function Rules({ toast }) {
                 <input type="checkbox" checked={!!rules[k]} onChange={e => setRules(p => ({ ...p, [k]: e.target.checked }))} /> {l}
               </label>
             ) : (
-              <Field key={k} label={l}><input className="input input-sm" type="number" step="any" value={rules[k]} onChange={e => setRules(p => ({ ...p, [k]: e.target.value }))} /></Field>
+              <Field key={k} label={l}><input className="input input-sm" type="number" step="any" value={rules[k] ?? ''} onChange={e => setRules(p => ({ ...p, [k]: e.target.value }))} /></Field>
             ))}
           </div>
         </div>
@@ -136,10 +160,10 @@ export default function Automation({ toast }) {
   return (
     <div className="stack" style={{ gap: 14 }}>
       <div className="page-head">
-        <div><h1 className="section-title">Automation</h1><div className="small muted">Rule tự động, tuyển chủ động, nhật ký</div></div>
+        <div><h1 className="section-title">Automation</h1><div className="small muted">Rule tự động, guardrail tài chính, tuyển chủ động, nhật ký</div></div>
         <div className="row">
           <button className="btn" disabled={!!busy} onClick={() => act('setup', '/api/admin/setup', () => 'Database đã được khởi tạo / nâng cấp')}>🛠 Khởi tạo / nâng cấp DB</button>
-          <button className="btn btn-primary" disabled={!!busy} onClick={() => act('tick', '/api/automation/run', r => `Đã chạy: ${r.screened} sàng lọc · ${r.reminders} nhắc · ${r.overdue} trễ · ${r.inactive} inactive · ${r.scaled} scale`)}>{busy === 'tick' ? 'Đang chạy…' : '▶ Chạy automation ngay'}</button>
+          <button className="btn btn-primary" disabled={!!busy} onClick={() => act('tick', '/api/automation/run', r => `Đã chạy: ${r.screened ?? 0} sàng lọc · ${r.reminders ?? 0} nhắc · ${r.overdue ?? 0} trễ · ${r.inactive ?? 0} inactive · ${r.scaled ?? 0} scale${r.deals_expired !== undefined ? ` · ${r.deals_expired} deal hết hạn` : ''}`)}>{busy === 'tick' ? 'Đang chạy…' : '▶ Chạy automation ngay'}</button>
         </div>
       </div>
       <div className="grid g-main" style={{ alignItems: 'start' }}>

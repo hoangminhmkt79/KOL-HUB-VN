@@ -59,6 +59,15 @@ export default function Overview({ go, openCreator }) {
         <Kpi label="Video 7 ngày" value={fmtNum(kpi.videos_7d)} sub={`${fmtNum(kpi.views)} views tổng`} />
       </div>
 
+      {(data.deals || data.fb) && (
+        <div className="grid g4">
+          <Kpi label="Deal đang thương lượng" value={fmtNum(data.deals?.open)} sub={data.deals?.accept_rate !== undefined && data.deals?.accept_rate !== null ? `Tỷ lệ chốt ${Number(data.deals.accept_rate)}% · ${fmtNum(data.deals?.booked)} đã chốt` : `${fmtNum(data.deals?.booked)} deal đã chốt`} />
+          <Kpi label="Phí đã cam kết" value={fmtMoney(data.deals?.committed) + 'đ'} sub={`Đã trả ${fmtMoney(data.deals?.paid)}đ`} />
+          <Kpi label="Đến hạn trả creator" value={fmtMoney(data.deals?.due_payouts) + 'đ'} tone={Number(data.deals?.due_payouts) > 0 ? 'red' : undefined} sub={<span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => go('deals', { status: 'booked' })}>Mở tab Deals</span>} />
+          <Kpi label="Tuyển group FB" value={`${fmtNum(data.fb?.activated)} kích hoạt`} sub={<span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => go('recruit')}>{fmtNum(data.fb?.clicks)} click · {fmtNum(data.fb?.signups)} signup · {fmtNum(data.fb?.groups)} group</span>} />
+        </div>
+      )}
+
       <div className="grid g-main">
         <div className="card">
           <div className="card-title">Funnel creator <span className="xs muted">conversion từ bước trước</span></div>

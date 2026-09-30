@@ -148,3 +148,34 @@ export function downloadCsv(filename, headers, rows) {
 }
 
 export const copy = async text => { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } };
+
+// ---------- v3: tiền, đếm ngược, số liệu nhỏ ----------
+export const vnd = n => `${Math.round(Number(n) || 0).toLocaleString('vi-VN')}đ`;
+
+export function useNow(ms = 30000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(t); }, [ms]);
+  return now;
+}
+
+// "còn 2 ngày 4 giờ" / "còn 3 giờ 12 phút" / "đã hết hạn"
+export function timeLeft(to, now = Date.now()) {
+  if (!to) return null;
+  const ms = new Date(to).getTime() - now;
+  if (!Number.isFinite(ms)) return null;
+  if (ms <= 0) return { text: 'đã hết hạn', tone: 'red', ms };
+  const m = Math.floor(ms / 6e4), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  const text = d >= 1 ? `còn ${d} ngày ${h % 24} giờ` : h >= 1 ? `còn ${h} giờ ${m % 60} phút` : `còn ${m} phút`;
+  return { text, tone: h < 12 ? 'red' : h < 24 ? 'amber' : 'blue', ms };
+}
+
+export function Countdown({ to, prefix = '⏳ ' }) {
+  const now = useNow(30000);
+  const t = timeLeft(to, now);
+  if (!t) return null;
+  return <span className={`badge tone-${t.tone}`}>{prefix}{t.text}</span>;
+}
+
+export const Stat = ({ label, value, tone }) => (
+  <div className="stat-box"><div className="xs muted bold">{label}</div><div className="bold tnum" style={tone ? { color: `var(--${tone})` } : undefined}>{value}</div></div>
+);

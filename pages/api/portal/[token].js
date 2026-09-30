@@ -29,8 +29,8 @@ async function view(req) {
   ]);
   const rules = await getRules();
   const [deals, rounds, payouts, rc, open] = await Promise.all([
-    query(`SELECT d.*, cp.name AS campaign_name, cp.brand_name FROM deals d LEFT JOIN campaigns cp ON cp.id=d.campaign_id
-           WHERE d.creator_id=$1 ORDER BY d.created_at DESC LIMIT 50`, [c.id]),
+    query(`SELECT d.*, cp.name AS campaign_name, cp.brand_name, COALESCE(cp.payment_days, $2) AS payment_days FROM deals d LEFT JOIN campaigns cp ON cp.id=d.campaign_id
+           WHERE d.creator_id=$1 ORDER BY d.created_at DESC LIMIT 50`, [c.id, rules.payment_days]),
     query(`SELECT r.deal_id, r.round_no, r.by_party, r.action, r.fee, r.commission_pct, r.videos, r.message, r.created_at
            FROM deal_rounds r JOIN deals d ON d.id=r.deal_id WHERE d.creator_id=$1 ORDER BY r.id`, [c.id]),
     query(`SELECT p.deal_id, p.kind, p.gross, p.pit, p.net, p.status, p.due_at, p.paid_at
@@ -47,7 +47,7 @@ async function view(req) {
   ]);
   const num = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, ['gross', 'pit', 'net', 'fee', 'commission_pct', 'video_fee', 'live_hour_fee', 'spark_fee_pct', 'fee_min', 'fee_max', 'deposit_pct'].includes(k) && v !== null ? Number(v) : v]));
   const dealList = deals.rows.map(d => ({
-    ...publicDeal(d), campaign_name: d.campaign_name, brand_name: d.brand_name,
+    ...publicDeal(d), campaign_name: d.campaign_name, brand_name: d.brand_name, payment_days: Number(d.payment_days),
     rounds: rounds.rows.filter(r => r.deal_id === d.id).map(({ deal_id, ...r }) => num(r)),
     payouts: payouts.rows.filter(p => p.deal_id === d.id).map(({ deal_id, ...p }) => num(p)),
   }));
