@@ -17,7 +17,8 @@ async function list(req) {
   if (flag === 'due') w.push(`next_action_at <= NOW() AND status NOT IN ('won','lost') AND NOT do_not_contact`);
   if (search) { p.push(`%${String(search).toLowerCase()}%`); w.push(`(LOWER(company) LIKE $${p.length} OR LOWER(contact_name) LIKE $${p.length} OR phone LIKE $${p.length} OR LOWER(shop_links) LIKE $${p.length})`); }
   const [rows, sum] = await Promise.all([
-    query(`SELECT id, ref, company, contact_name, phone, email, services, platforms, niche, gmv_band, budget_booking, budget_ads, creators_count, videos_per_creator,
+    query(`SELECT id, ref, company, contact_name, role, phone, email, services, platforms, niche, gmv_band, ad_spend_band, aov, budget_booking, budget_ads, deal_value,
+             creators_count, videos_per_creator, shop_links, website, pain_points, timeline, current_partner, heard_from, contact_channel, legal_name, tax_code,
              score, score_reason, flags, status, source, next_action_at, touch_count, do_not_contact, created_at, estimate->>'total' AS est_total
            FROM client_requests WHERE ${w.join(' AND ')} ORDER BY (status IN ('won','lost')), score DESC, created_at DESC LIMIT 300`, p),
     query(`SELECT

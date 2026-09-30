@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { NICHES, fmtMoney, nicheLabel } from '../lib/constants';
-import { SERVICES, PLATFORMS_B2B, GMV_BANDS, AD_BANDS, KOL_TIERS, estimateBooking, serviceLabel } from '../lib/clientOffer';
+import { SERVICES, PLATFORMS_B2B, GMV_BANDS, AD_BANDS, KOL_TIERS, PAIN_POINTS, CURRENT_PARTNER, TIMELINES, CONTACT_CHANNELS, HEARD_FROM, estimateBooking, serviceLabel } from '../lib/clientOffer';
 
 const EMPTY = {
   services: ['kol_booking'], platforms: ['tiktok'], niche: '', gmv_band: '', ad_spend_band: '',
@@ -11,6 +11,8 @@ const EMPTY = {
   kol_tiers: ['nano', 'micro'], kol_niches: [], kol_requirements: '', creators_count: 20, videos_per_creator: 1, live_sessions: '',
   budget_booking: '', budget_ads: '',
   company: '', contact_name: '', role: '', is_decision_maker: null, phone: '', email: '', consent: false, website: '',
+  pain_points: [], current_partner: '', aov: '', top_products: '', target_customer: '', competitors: '', site: '', fanpage: '',
+  timeline: '', contact_channel: 'zalo', contact_time: '', heard_from: '', legal_name: '', tax_code: '',
 };
 const vnd = n => `${Math.round(Number(n) || 0).toLocaleString('vi-VN')}đ`;
 const toggle = (arr, v) => (arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
@@ -51,7 +53,7 @@ function RequestForm({ initial, onDone }) {
     try {
       const r = await fetch('/api/public/requests', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...f, consent: true }),
+        body: JSON.stringify({ ...f, website: f.website, consent: true, site: undefined, ...(f.site ? { website_url: f.site } : {}) }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Gửi thất bại.');
@@ -77,6 +79,9 @@ function RequestForm({ initial, onDone }) {
               </div>
             ))}</div>
           </div>
+          <div><label className="label">Bạn đang gặp vấn đề gì? (chọn nhiều)</label>
+            <div className="row wrap" style={{ gap: 6 }}>{PAIN_POINTS.map(p => <button key={p.v} type="button" className={`btn btn-sm${f.pain_points.includes(p.v) ? ' btn-primary' : ''}`} onClick={() => put('pain_points', toggle(f.pain_points, p.v))}>{p.l}</button>)}</div>
+          </div>
           <div><label className="label">Kênh đang bán</label>
             <div className="row wrap" style={{ gap: 6 }}>{PLATFORMS_B2B.map(p => <button key={p.v} type="button" className={`btn btn-sm${f.platforms.includes(p.v) ? ' btn-primary' : ''}`} onClick={() => put('platforms', toggle(f.platforms, p.v))}>{p.l}</button>)}</div>
           </div>
@@ -84,6 +89,9 @@ function RequestForm({ initial, onDone }) {
             <div><label className="label">Ngành hàng</label><select className="select" value={f.niche} onChange={set('niche')}><option value="">Chọn…</option>{NICHES.map(n => <option key={n.v} value={n.v}>{n.l}</option>)}</select></div>
             <div><label className="label">GMV / tháng</label><select className="select" value={f.gmv_band} onChange={set('gmv_band')}><option value="">Chọn…</option>{GMV_BANDS.map(n => <option key={n.v} value={n.v}>{n.l}</option>)}</select></div>
             <div><label className="label">Chi phí ads / tháng</label><select className="select" value={f.ad_spend_band} onChange={set('ad_spend_band')}><option value="">Chọn…</option>{AD_BANDS.map(n => <option key={n.v} value={n.v}>{n.l}</option>)}</select></div>
+          </div>
+          <div><label className="label">Hiện đang làm marketing sàn với ai?</label>
+            <div className="row wrap" style={{ gap: 6 }}>{CURRENT_PARTNER.map(p => <button key={p.v} type="button" className={`btn btn-sm${f.current_partner === p.v ? ' btn-primary' : ''}`} onClick={() => put('current_partner', f.current_partner === p.v ? '' : p.v)}>{p.l}</button>)}</div>
           </div>
           <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 12 }}>
             <div className="small bold" style={{ marginBottom: 8 }}>⚡ Mini-audit miễn phí — trả lời nhanh để nhận điểm sức khoẻ shop ngay sau khi gửi</div>
@@ -107,11 +115,19 @@ function RequestForm({ initial, onDone }) {
             <div><label className="label">SL mẫu có thể gửi</label><input className="input" type="number" min="0" value={f.sample_qty} onChange={set('sample_qty')} placeholder="50" /></div>
             <div><label className="label">Giá vốn + ship / mẫu</label><input className="input" type="number" min="0" step="10000" value={f.sample_value} onChange={set('sample_value')} placeholder="120000" /></div>
           </div>
-          <div><label className="label">Brief / mô tả sản phẩm & thông điệp</label><textarea className="textarea" rows={4} value={f.brief} onChange={set('brief')} placeholder="USP, đối tượng khách, claim được phép, điều cần tránh…" /></div>
-          <div className="grid g2" style={{ gap: 10 }}>
-            <div><label className="label">Mục tiêu</label><input className="input" value={f.goal} onChange={set('goal')} placeholder="VD: tăng GMV TikTok Shop 2× trong 3 tháng" /></div>
-            <div><label className="label">Muốn bắt đầu</label><input className="input" type="date" value={f.start_date} onChange={set('start_date')} /></div>
+          <details style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '10px 12px' }}>
+            <summary className="small bold" style={{ cursor: 'pointer' }}>➕ Thêm chi tiết (AOV, khách mục tiêu, đối thủ…) — giúp audit chính xác hơn</summary>
+          <div className="grid g2" style={{ gap: 10, marginTop: 10 }}>
+            <div><label className="label">Sản phẩm chủ lực / top SKU</label><input className="input" value={f.top_products} onChange={set('top_products')} placeholder="Serum B5, kem chống nắng SPF50…" /></div>
+            <div><label className="label">Giá trị đơn trung bình (AOV, VNĐ)</label><input className="input" type="number" min="0" step="10000" value={f.aov} onChange={set('aov')} placeholder="250000" /></div>
+            <div><label className="label">Khách hàng mục tiêu</label><input className="input" value={f.target_customer} onChange={set('target_customer')} placeholder="Nữ 22–35, da dầu mụn, văn phòng…" /></div>
+            <div><label className="label">Đối thủ / shop tham chiếu</label><input className="input" value={f.competitors} onChange={set('competitors')} placeholder="Tên shop hoặc link" /></div>
+            <div><label className="label">Website</label><input className="input" value={f.site} onChange={set('site')} placeholder="https://…" /></div>
+            <div><label className="label">Fanpage</label><input className="input" value={f.fanpage} onChange={set('fanpage')} placeholder="facebook.com/…" /></div>
           </div>
+          </details>
+          <div><label className="label">Brief / mô tả sản phẩm & thông điệp</label><textarea className="textarea" rows={4} value={f.brief} onChange={set('brief')} placeholder="USP, đối tượng khách, claim được phép, điều cần tránh…" /></div>
+          <div><label className="label">Mục tiêu</label><input className="input" value={f.goal} onChange={set('goal')} placeholder="VD: tăng GMV TikTok Shop 2× trong 3 tháng" /></div>
           <button className="btn btn-primary btn-lg btn-block" onClick={next}>Tiếp theo →</button>
         </div>
       )}
@@ -162,7 +178,20 @@ function RequestForm({ initial, onDone }) {
             <div><label className="label">Email</label><input className="input" type="email" value={f.email} onChange={set('email')} /></div>
             <div><label className="label">Vai trò</label><input className="input" value={f.role} onChange={set('role')} placeholder="Founder, Marketing Manager…" /></div>
             <YesNo label="Bạn là người quyết định ngân sách?" value={f.is_decision_maker} onChange={v => put('is_decision_maker', v)} />
+            <div><label className="label">Muốn triển khai khi nào?</label><select className="select" value={f.timeline} onChange={set('timeline')}><option value="">Chọn…</option>{TIMELINES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</select></div>
+            <div><label className="label">Biết đến chúng tôi qua</label><select className="select" value={f.heard_from} onChange={set('heard_from')}><option value="">Chọn…</option>{HEARD_FROM.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</select></div>
+            <div><label className="label">Liên hệ qua</label>
+              <div className="row" style={{ gap: 6 }}>{CONTACT_CHANNELS.map(c => <button key={c.v} type="button" className={`btn btn-sm${f.contact_channel === c.v ? ' btn-primary' : ''}`} onClick={() => put('contact_channel', c.v)}>{c.l}</button>)}</div>
+            </div>
+            <div><label className="label">Khung giờ tiện liên hệ</label><input className="input" value={f.contact_time} onChange={set('contact_time')} placeholder="VD: 9h–11h sáng" /></div>
           </div>
+          <details style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '10px 12px' }}>
+            <summary className="small bold" style={{ cursor: 'pointer' }}>Thông tin xuất hoá đơn / hợp đồng (không bắt buộc)</summary>
+            <div className="grid g2" style={{ gap: 10, marginTop: 10 }}>
+              <div><label className="label">Tên pháp nhân</label><input className="input" value={f.legal_name} onChange={set('legal_name')} placeholder="Công ty TNHH …" /></div>
+              <div><label className="label">Mã số thuế</label><input className="input" inputMode="numeric" value={f.tax_code} onChange={set('tax_code')} /></div>
+            </div>
+          </details>
           <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 12 }} className="small">
             <b>Tóm tắt:</b> {f.services.map(serviceLabel).join(', ')}{f.niche ? ` · ${nicheLabel(f.niche)}` : ''}{wantsKol ? ` · ${f.creators_count} KOL × ${f.videos_per_creator} video` : ''}{Number(f.budget_booking) ? ` · booking ${vnd(f.budget_booking)}` : ''}{Number(f.budget_ads) ? ` · ads ${vnd(f.budget_ads)}/tháng` : ''}
           </div>
@@ -194,12 +223,13 @@ function Done({ res, onBack }) {
           <div className="stack" style={{ gap: 6, marginTop: 10 }}>
             {a.axes.map(x => (
               <div key={x.key} className="row" style={{ gap: 8 }}>
-                <span className="small" style={{ width: 130 }}>{x.l}</span>
+                <span className="small" style={{ width: 130 }}>{x.l}{x.unknown ? ' ?' : ''}</span>
                 <div className="progress grow"><span style={{ width: `${(x.score / 20) * 100}%`, background: tone(x.score * 5) }} /></div>
                 <span className="xs tnum" style={{ width: 36, textAlign: 'right' }}>{x.score}/20</span>
               </div>
             ))}
           </div>
+          {a.unknown > 0 && <div className="xs muted" style={{ marginTop: 8 }}>? = chưa đủ thông tin — team sẽ hỏi thêm khi audit chi tiết.</div>}
           <div className="label" style={{ marginTop: 14 }}>3 việc nên làm ngay</div>
           {a.actions.map((t, i) => <div key={i} className="small" style={{ marginBottom: 4 }}>{i + 1}. {t}</div>)}
         </div>
