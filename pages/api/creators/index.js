@@ -56,6 +56,7 @@ async function create(req, res) {
   if (!NICHES.some(n => n.v === b.niche)) bad('Lĩnh vực không hợp lệ.');
   if (!PLATFORMS.some(x => x.v === b.platform)) bad('Nền tảng không hợp lệ.');
   if (!CTYPES.some(x => x.v === b.content_type)) bad('Loại nội dung không hợp lệ.');
+  if (b.consent !== true) bad('Cần đồng ý xử lý dữ liệu cá nhân để đăng ký.');
 
   const handle = handleFromLink(link);
   const dupe = await query(
@@ -76,6 +77,14 @@ async function create(req, res) {
     return res.status(409).json({ error: 'Kênh / SĐT / email này đã đăng ký rồi. Kiểm tra link theo dõi đã nhận hoặc liên hệ team.' });
   }
 
+  // Nguồn tuyển: mã bài đăng group FB (?acq= hoặc cookie kol_acq từ /j/[code])
+  const acqRaw = String(b.acq || (req.headers.cookie || '').match(/(?:^|;\s*)kol_acq=([^;]+)/)?.[1] || '').toUpperCase().slice(0, 16);
+  let acq = null;
+  if (/^[A-Z0-9]{4,16}$/.test(acqRaw)) {
+    const r = await query('SELECT code FROM fb_posts WHERE code=$1', [acqRaw]);
+    acq = r.rows[0]?.code || null;
+  }
+
   const rules = await getRules();
   const out = await tx(async db => {
     let referredBy = null;
@@ -87,13 +96,15 @@ async function create(req, res) {
     const cols = Object.keys(fields);
     if (dupe.rows.length) {
       const r = await db.query(
-        `UPDATE creators SET ${cols.map((k, i) => `${k}=$${i + 1}`).join(',')}, status='applied', source='invite_accepted', updated_at=NOW()
+        `UPDATE creators SET ${cols.map((k, i) => `${k}=$${i + 1}`).join(',')}, status='applied', source='invite_accepted',
+           consent_at=NOW(), acq_code=COALESCE($${cols.length + 2}, acq_code), updated_at=NOW()
          WHERE id=$${cols.length + 1} RETURNING *`,
-        [...cols.map(k => fields[k]), dupe.rows[0].id]
+        [...cols.map(k => fields[k]), dupe.rows[0].id, acq]
       );
       row = r.rows[0];
     } else {
-      const all = { ...fields, portal_token: randomToken(), ref_code: randomCode(), referred_by: referredBy, source: referredBy ? 'referral' : 'form', status: 'applied' };
+      const all = { ...fields, portal_token: randomToken(), ref_code: randomCode(), referred_by: referredBy,
+        source: acq ? 'fb_group' : referredBy ? 'referral' : 'form', acq_code: acq, consent_at: new Date(), status: 'applied' };
       const keys = Object.keys(all);
       const r = await db.query(
         `INSERT INTO creators (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`,
@@ -101,7 +112,7 @@ async function create(req, res) {
       );
       row = r.rows[0];
     }
-    await logEvent(db, { type: 'creator_applied', creator_id: row.id, actor: 'creator', message: `Đăng ký mới · ${followers.toLocaleString('vi-VN')} followers · score ${score}${referredBy ? ' · qua giới thiệu' : ''}` });
+    await logEvent(db, { type: 'creator_applied', creator_id: row.id, actor: 'creator', message: `Đăng ký mới · ${followers.toLocaleString('vi-VN')} followers · score ${score}${referredBy ? ' · qua giới thiệu' : ''}${acq ? ` · từ group FB (${acq})` : ''}` });
     row.status = await screenCreator(db, row, rules);
     return row;
   });

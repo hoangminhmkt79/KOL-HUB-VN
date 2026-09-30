@@ -48,7 +48,30 @@ async function overview() {
     query(`SELECT id, name, handle, followers, score, screen_reason, applied_at FROM creators
            WHERE status IN ('applied','pending') ORDER BY score DESC NULLS LAST LIMIT 6`),
   ]);
+  const [deals, fb] = await Promise.all([
+    query(`SELECT
+      COUNT(*) FILTER (WHERE status IN ('offered','countered'))::int AS open,
+      COUNT(*) FILTER (WHERE status='booked')::int AS booked,
+      COALESCE(SUM(fee) FILTER (WHERE status IN ('booked','delivered','completed')),0)::bigint AS committed,
+      (SELECT COALESCE(SUM(gross),0)::bigint FROM payouts WHERE status='paid') AS paid,
+      (SELECT COALESCE(SUM(gross),0)::bigint FROM payouts WHERE status='due') AS due_payouts,
+      COUNT(*) FILTER (WHERE status IN ('booked','delivered','completed'))::int AS won,
+      COUNT(*) FILTER (WHERE status IN ('booked','delivered','completed','declined','expired'))::int AS decided
+      FROM deals`).catch(() => ({ rows: [null] })),
+    query(`SELECT
+      (SELECT COUNT(*)::int FROM fb_groups WHERE status<>'banned') AS groups,
+      (SELECT COALESCE(SUM(clicks),0)::int FROM fb_posts) AS clicks,
+      (SELECT COUNT(*)::int FROM creators c WHERE EXISTS (SELECT 1 FROM fb_posts p WHERE p.code=c.acq_code)) AS signups,
+      (SELECT COUNT(*)::int FROM creators c WHERE EXISTS (SELECT 1 FROM fb_posts p WHERE p.code=c.acq_code)
+         AND EXISTS (SELECT 1 FROM videos v WHERE v.creator_id=c.id AND v.status<>'rejected')) AS activated`).catch(() => ({ rows: [null] })),
+  ]);
+  const d = deals.rows[0];
   return {
+    deals: d ? {
+      open: d.open, booked: d.booked, committed: Number(d.committed), paid: Number(d.paid), due_payouts: Number(d.due_payouts),
+      accept_rate: d.decided ? Math.round((d.won / d.decided) * 1000) / 10 : null,
+    } : null,
+    fb: fb.rows[0],
     funnel: funnel.rows[0], kpi: kpi.rows[0], perf: perf.rows[0],
     overdue: overdue.rows, due_soon: dueSoon.rows, top: top.rows,
     events: events.rows, trend: trend.rows, pending: pending.rows,
