@@ -255,7 +255,7 @@ export default function Home() {
 
   const apply = () => { setBrief(null); setView('apply'); window.scrollTo(0, 0); };
   if (pub?.terms) PAY_DEFAULTS = { ...PAY, ...pub.terms };
-  const pay = payOf(pub?.campaigns?.[0]);
+  const pay = payOf(null);
   const camps = pub?.campaigns || [];
   const stats = pub?.stats || {};
 

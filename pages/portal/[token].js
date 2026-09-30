@@ -46,7 +46,7 @@ function DealCard({ d, fair, act, busy, pay }) {
   const [showHist, setShowHist] = useState(false);
   const set = k => e => setF(p => ({ ...p, [k]: e.target.value }));
   const st = DEAL_STATUS[d.status] || { l: d.status, tone: 'slate' };
-  const dPay = { ...pay, deposit_pct: numOr(d.deposit_pct, pay.deposit_pct) };
+  const dPay = { ...pay, deposit_pct: numOr(d.deposit_pct, pay.deposit_pct), payment_days: numOr(d.payment_days, pay.payment_days) };
   const fee = Number(d.fee) || 0;
   const rounds = d.rounds || [];
   const maxRounds = d.rounds_max || pay.deal_rounds_max;

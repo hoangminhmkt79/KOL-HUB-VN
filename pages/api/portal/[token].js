@@ -32,7 +32,8 @@ async function view(req) {
     query(`SELECT d.*, cp.name AS campaign_name, cp.brand_name, COALESCE(cp.payment_days, $2) AS payment_days FROM deals d LEFT JOIN campaigns cp ON cp.id=d.campaign_id
            WHERE d.creator_id=$1 ORDER BY d.created_at DESC LIMIT 50`, [c.id, rules.payment_days]),
     query(`SELECT r.deal_id, r.round_no, r.by_party, r.action, r.fee, r.commission_pct, r.videos, r.message, r.created_at
-           FROM deal_rounds r JOIN deals d ON d.id=r.deal_id WHERE d.creator_id=$1 ORDER BY r.id`, [c.id]),
+           FROM deal_rounds r JOIN deals d ON d.id=r.deal_id
+           WHERE d.creator_id=$1 AND NOT (r.action='note' AND r.by_party='brand') ORDER BY r.id`, [c.id]),
     query(`SELECT p.deal_id, p.kind, p.gross, p.pit, p.net, p.status, p.due_at, p.paid_at
            FROM payouts p JOIN deals d ON d.id=p.deal_id WHERE d.creator_id=$1
            ORDER BY p.deal_id, CASE p.kind WHEN 'deposit' THEN 0 ELSE 1 END`, [c.id]),

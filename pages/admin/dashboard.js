@@ -87,7 +87,8 @@ export default function Dashboard() {
 
         <nav className="mobnav">
           {NAV.map(([id, l, ic]) => (
-            <button key={id} className={tab === id ? 'on' : ''} onClick={() => go(id)}><span className="nav-ico">{ic}</span>{l}</button>
+            <button key={id} className={tab === id ? 'on' : ''} onClick={() => go(id)}
+              ref={el => { if (el && tab === id) el.scrollIntoView({ block: 'nearest', inline: 'center' }); }}><span className="nav-ico">{ic}</span>{l}</button>
           ))}
         </nav>
       </div>

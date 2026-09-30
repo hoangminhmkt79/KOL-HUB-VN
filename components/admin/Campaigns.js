@@ -78,7 +78,7 @@ function CampaignForm({ onClose, onSaved, toast }) {
           {tpcn && <div className="hint" style={{ marginTop: -6 }}>TPCN: bắt buộc câu “Thực phẩm này không phải là thuốc…”.</div>}
           <Field label="Brief (hiện trên landing + portal)"><textarea className="textarea" rows={3} value={f.brief} onChange={set('brief')} placeholder="Sản phẩm, thông điệp chính, USP…" /></Field>
           <Field label="Yêu cầu nội dung"><textarea className="textarea" rows={2} value={f.req} onChange={set('req')} placeholder="Gắn giỏ hàng, hashtag, thời lượng…" /></Field>
-          <Field label="Lưu ý / điều cần tránh"><textarea className="textarea" rows={2} value={f.note} onChange={set('note')} placeholder="Không claim chữa bệnh, không so sánh đối thủ…" /></Field>
+          <Field label="Lưu ý / điều cần tránh (công khai cho creator)"><textarea className="textarea" rows={2} value={f.note} onChange={set('note')} placeholder="Không claim chữa bệnh, không so sánh đối thủ…" /></Field>
           <label className="row small"><input type="checkbox" checked={f.is_public} onChange={set('is_public')} /> Hiện trên trang tuyển (landing) để creator tự ứng tuyển</label>
           {err && <div className="alert alert-error small">⚠ {err}</div>}
           <button className="btn btn-primary" disabled={!f.name.trim()} onClick={next}>Tiếp: chọn creator →</button>
