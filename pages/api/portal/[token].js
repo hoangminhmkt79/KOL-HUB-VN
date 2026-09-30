@@ -5,6 +5,7 @@ import { submitVideo } from '../../../lib/automation';
 import { createSampleFromOrder } from '../../../lib/orders';
 import { getRules } from '../../../lib/settings';
 import { logEvent } from '../../../lib/events';
+import { parseRateCard, saveRateCard, normRateCard, RC_COLS } from '../../../lib/rateCard';
 import { creatorAction, publicDeal } from '../../../lib/deals';
 import { fairPrice, creatorTier } from '../../../lib/pricing';
 
@@ -37,7 +38,7 @@ async function view(req) {
     query(`SELECT p.deal_id, p.kind, p.gross, p.pit, p.net, p.status, p.due_at, p.paid_at
            FROM payouts p JOIN deals d ON d.id=p.deal_id WHERE d.creator_id=$1
            ORDER BY p.deal_id, CASE p.kind WHEN 'deposit' THEN 0 ELSE 1 END`, [c.id]),
-    query('SELECT video_fee, live_hour_fee, commission_pct, spark_fee_pct, accepts_barter, note, updated_at FROM rate_cards WHERE creator_id=$1', [c.id]),
+    query(`SELECT ${RC_COLS} FROM rate_cards WHERE creator_id=$1`, [c.id]),
     query(`SELECT cp.id, cp.name, cp.product, cp.brand_name, cp.niche, cp.deal_type, cp.fee_min, cp.fee_max, cp.commission_pct, cp.posts_per,
              cp.revisions, cp.deposit_pct, cp.payment_days, cp.end_date, cp.brief, cp.req, cp.claims_allowed, cp.claims_banned, cp.contact_name,
              GREATEST(cp.slots - (SELECT COUNT(*) FROM campaign_creators cc WHERE cc.campaign_id=cp.id), 0)::int AS slots_left,
@@ -61,7 +62,7 @@ async function view(req) {
     },
     samples: samples.rows, videos: videos.rows, campaigns: camps.rows, referrals: refs.rows[0].n,
     deals: dealList,
-    rate_card: rc.rows[0] ? num(rc.rows[0]) : null,
+    rate_card: normRateCard(rc.rows[0]),
     tier: creatorTier(c, rules),
     fair: { fee: fair.fee, live_hour: fair.live_hour, formula: fair.formula },
     open_campaigns: open.rows.map(num),
@@ -119,29 +120,8 @@ async function act(req, res) {
   }
 
   if (b.action === 'rate_card') {
-    const money = (k, label) => {
-      if (b[k] === undefined || b[k] === null || b[k] === '') return null;
-      const n = Number(b[k]);
-      if (!Number.isInteger(n) || n < 0 || n > 1e10) bad(`${label} không hợp lệ (số nguyên ≥ 0).`);
-      return n;
-    };
-    const pct = (k, label) => {
-      if (b[k] === undefined || b[k] === null || b[k] === '') return null;
-      const n = Number(b[k]);
-      if (!Number.isFinite(n) || n < 0 || n > 100) bad(`${label} không hợp lệ (0–100).`);
-      return Math.round(n * 100) / 100;
-    };
-    const vals = [c.id, money('video_fee', 'Giá / video'), money('live_hour_fee', 'Giá / giờ live'), pct('commission_pct', '% hoa hồng'),
-      pct('spark_fee_pct', '% phí spark code'), b.accepts_barter !== false, String(b.note || '').trim().slice(0, 1000)];
-    const r = await query(
-      `INSERT INTO rate_cards (creator_id, video_fee, live_hour_fee, commission_pct, spark_fee_pct, accepts_barter, note, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
-       ON CONFLICT (creator_id) DO UPDATE SET video_fee=EXCLUDED.video_fee, live_hour_fee=EXCLUDED.live_hour_fee, commission_pct=EXCLUDED.commission_pct,
-         spark_fee_pct=EXCLUDED.spark_fee_pct, accepts_barter=EXCLUDED.accepts_barter, note=EXCLUDED.note, updated_at=NOW()
-       RETURNING video_fee, live_hour_fee, commission_pct, spark_fee_pct, accepts_barter, note, updated_at`, vals);
+    const rc = await saveRateCard({ query }, c.id, parseRateCard(b));
     await logEvent(null, { type: 'rate_card_updated', creator_id: c.id, actor: 'creator', message: 'Creator cập nhật bảng giá' });
-    const rc = r.rows[0];
-    for (const k of ['video_fee', 'live_hour_fee', 'commission_pct', 'spark_fee_pct']) if (rc[k] !== null) rc[k] = Number(rc[k]);
     return { rate_card: rc };
   }
 

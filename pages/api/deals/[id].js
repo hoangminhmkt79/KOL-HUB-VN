@@ -1,3 +1,4 @@
+import { normRateCard } from '../../../lib/rateCard';
 import { query } from '../../../lib/db';
 import { route, toId, notFound } from '../../../lib/http';
 import { brandAction } from '../../../lib/deals';
@@ -19,7 +20,7 @@ async function detail(req) {
   ]);
   const cr = creator.rows[0];
   if (cr) delete cr.portal_token;
-  return { deal, rounds: rounds.rows, payouts: payouts.rows, creator: cr || null, campaign: campaign.rows[0] || null, rate_card: rc.rows[0] || null };
+  return { deal, rounds: rounds.rows, payouts: payouts.rows, creator: cr || null, campaign: campaign.rows[0] || null, rate_card: normRateCard(rc.rows[0]) };
 }
 
 async function update(req) {

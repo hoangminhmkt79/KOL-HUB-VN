@@ -148,13 +148,13 @@ function DealCard({ d, fair, act, busy, pay }) {
 }
 
 function RateCard({ rc, fair, tier, act, busy }) {
-  const [f, setF] = useState({ video_fee: '', live_hour_fee: '', commission_pct: '', spark_fee_pct: '', accepts_barter: true, note: '' });
+  const [f, setF] = useState({ video_fee: '', live_hour_fee: '', commission_pct: '', spark_fee_pct: '', accepts_barter: true, videos_per_month: '', deal_types: ['barter', 'hybrid', 'fee'], note: '' });
   useEffect(() => {
-    if (rc) setF({ video_fee: rc.video_fee ?? '', live_hour_fee: rc.live_hour_fee ?? '', commission_pct: rc.commission_pct ?? '', spark_fee_pct: rc.spark_fee_pct ?? '', accepts_barter: rc.accepts_barter !== false, note: rc.note || '' });
+    if (rc) setF({ video_fee: rc.video_fee ?? '', live_hour_fee: rc.live_hour_fee ?? '', commission_pct: rc.commission_pct ?? '', spark_fee_pct: rc.spark_fee_pct ?? '', accepts_barter: rc.accepts_barter !== false, videos_per_month: rc.videos_per_month ?? '', deal_types: rc.deal_types?.length ? rc.deal_types : ['barter', 'hybrid', 'fee'], note: rc.note || '' });
   }, [rc]);
   const set = k => e => setF(p => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const t = TIERS[tier];
-  const save = () => act('rate', { action: 'rate_card', video_fee: numOr(f.video_fee, null), live_hour_fee: numOr(f.live_hour_fee, null), commission_pct: numOr(f.commission_pct, null), spark_fee_pct: numOr(f.spark_fee_pct, null), accepts_barter: !!f.accepts_barter, note: f.note }, 'Đã lưu bảng giá');
+  const save = () => act('rate', { action: 'rate_card', video_fee: numOr(f.video_fee, null), live_hour_fee: numOr(f.live_hour_fee, null), commission_pct: numOr(f.commission_pct, null), spark_fee_pct: numOr(f.spark_fee_pct, null), accepts_barter: !!f.accepts_barter, videos_per_month: numOr(f.videos_per_month, null), deal_types: [...f.deal_types.filter(t => t !== 'barter'), ...(f.accepts_barter ? ['barter'] : [])], note: f.note }, 'Đã lưu bảng giá');
   return (
     <div className="card" style={{ marginBottom: 14 }}>
       <div className="card-title">💵 Bảng giá của tôi {t && <Badge tone={t.tone}>{t.l}</Badge>}</div>
@@ -174,6 +174,7 @@ function RateCard({ rc, fair, tier, act, busy }) {
         <div><label className="label">Phí / video (VNĐ)</label><input className="input input-sm" type="number" inputMode="numeric" min="0" value={f.video_fee} onChange={set('video_fee')} placeholder={fair?.fee ? String(fair.fee) : ''} /></div>
         <div><label className="label">Phí / giờ live (VNĐ)</label><input className="input input-sm" type="number" inputMode="numeric" min="0" value={f.live_hour_fee} onChange={set('live_hour_fee')} placeholder={fair?.live_hour ? String(fair.live_hour) : ''} /></div>
         <div><label className="label">% hoa hồng mong muốn</label><input className="input input-sm" type="number" inputMode="decimal" min="0" value={f.commission_pct} onChange={set('commission_pct')} /></div>
+        <div><label className="label">Số video mong muốn / tháng</label><input className="input input-sm" type="number" inputMode="numeric" min="1" max="60" value={f.videos_per_month} onChange={set('videos_per_month')} /></div>
         <div><label className="label">Phí Spark code (+%)</label><input className="input input-sm" type="number" inputMode="decimal" min="0" value={f.spark_fee_pct} onChange={set('spark_fee_pct')} /></div>
       </div>
       <label className="chk" style={{ margin: '10px 0' }}><input type="checkbox" checked={f.accepts_barter} onChange={set('accepts_barter')} /> Tôi nhận deal barter (mẫu + hoa hồng)</label>

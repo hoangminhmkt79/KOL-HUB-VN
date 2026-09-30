@@ -1,19 +1,21 @@
 import { query } from '../../../lib/db';
 import { route, bad, notFound, toId } from '../../../lib/http';
 import { logEvent } from '../../../lib/events';
+import { normRateCard, RC_COLS } from '../../../lib/rateCard';
 import { CREATOR_STATUS_KEYS, handleFromLink } from '../../../lib/constants';
 
 async function detail(req) {
   const id = toId(req.query.id);
   const c = await query('SELECT * FROM creators WHERE id=$1', [id]);
   if (!c.rows.length) notFound();
-  const [samples, videos, events, refs] = await Promise.all([
+  const [samples, videos, events, refs, rc] = await Promise.all([
     query('SELECT s.*, cp.name AS campaign_name FROM samples s LEFT JOIN campaigns cp ON cp.id=s.campaign_id WHERE s.creator_id=$1 ORDER BY s.requested_at DESC', [id]),
     query('SELECT * FROM videos WHERE creator_id=$1 ORDER BY created_at DESC', [id]),
     query('SELECT * FROM events WHERE creator_id=$1 ORDER BY created_at DESC LIMIT 50', [id]),
     query('SELECT COUNT(*)::int AS n FROM creators WHERE referred_by=$1', [id]),
+    query(`SELECT ${RC_COLS} FROM rate_cards WHERE creator_id=$1`, [id]),
   ]);
-  return { creator: c.rows[0], samples: samples.rows, videos: videos.rows, events: events.rows, referrals: refs.rows[0].n };
+  return { creator: c.rows[0], samples: samples.rows, videos: videos.rows, events: events.rows, referrals: refs.rows[0].n, rate_card: normRateCard(rc.rows[0]) };
 }
 
 async function update(req) {

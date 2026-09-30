@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { NICHES, PLATFORMS, CTYPES, CITIES, GMV_OPTS, dealTypeLabel, nicheLabel, fmtNum, fmtDate, fmtMoney } from '../lib/constants';
-import { payoutSplit, NICHE_MULT } from '../lib/pricing';
+import { NICHES, PLATFORMS, CTYPES, CITIES, GMV_OPTS, DEAL_TYPES, dealTypeLabel, nicheLabel, fmtNum, fmtDate, fmtMoney } from '../lib/constants';
+import { payoutSplit, NICHE_MULT, fairPrice } from '../lib/pricing';
 import { Modal, Stat, vnd } from '../components/ui';
 
 // Mặc định công bố (docs/DEBATE.md) — campaign có thể ghi đè cọc / hạn trả
@@ -75,7 +75,8 @@ function BriefModal({ c, onClose, onApply }) {
   );
 }
 
-const EMPTY = { name: '', email: '', phone: '', link: '', followers: '', avg_views: '', avg_viewers: '', platform: 'TikTok', ct: '', niche: '', gmv_kenh: '', address: '', website: '', consent: false };
+const EMPTY = { name: '', email: '', phone: '', link: '', followers: '', avg_views: '', avg_viewers: '', platform: 'TikTok', ct: '', niche: '', gmv_kenh: '', address: '', website: '', consent: false,
+  deal_types: ['barter', 'hybrid'], video_fee: '', videos_per_month: 2, live_hour_fee: '', commission_pct: 15, spark: false, spark_fee_pct: '' };
 const calcScore = (f, v) => { const F = parseInt(f) || 0; return F > 0 ? Math.round(((parseInt(v) || 0) / F) * 100) / 100 : 0; };
 const scoreTone = s => (s >= 0.3 ? 'green' : s >= 0.15 ? 'amber' : 'red');
 const scoreText = s => (s >= 0.3 ? 'Rất tốt — ưu tiên duyệt' : s >= 0.15 ? 'Tốt — có tiềm năng' : 'Còn thấp — nên cải thiện chất lượng content');
@@ -102,6 +103,16 @@ function ApplyForm({ initial, onDone, onBack }) {
     if (showLive && !form.avg_viewers) return setErr('Điền số người xem trung bình mỗi livestream.');
     setStep(3);
   };
+  // Bước "Mức cast": creator tự đề xuất giá + số video
+  const fair = fairPrice({ avg_views: form.avg_views, niche: form.niche }, { cpm_vnd: PAY_DEFAULTS.cpm_vnd || 50000 });
+  const wantsFee = form.deal_types.some(t => t !== 'barter');
+  const toggleType = v => setForm(p => ({ ...p, deal_types: p.deal_types.includes(v) ? p.deal_types.filter(x => x !== v) : [...p.deal_types, v] }));
+  const next3 = () => {
+    if (!form.deal_types.length) return setErr('Chọn ít nhất 1 hình thức hợp tác.');
+    if (wantsFee && !(Number(form.video_fee) > 0)) return setErr('Nhập giá mong muốn cho 1 video (hoặc chỉ chọn Barter).');
+    if (!(Number(form.videos_per_month) >= 1)) return setErr('Chọn số video bạn muốn nhận mỗi tháng.');
+    setErr(''); setStep(4);
+  };
   const submit = async () => {
     if (!form.address) return setErr('Chọn tỉnh/thành nhận mẫu.');
     if (!form.consent) return setErr('Vui lòng tick đồng ý xử lý dữ liệu cá nhân để gửi đơn.');
@@ -114,6 +125,15 @@ function ApplyForm({ initial, onDone, onBack }) {
           followers: form.followers, avg_views: form.avg_views, avg_viewers: form.avg_viewers,
           platform: form.platform, content_type: form.ct, niche: form.niche, channel_gmv: form.gmv_kenh,
           address: form.address, ref: form.ref, website: form.website, consent: true, ...(form.acq ? { acq: form.acq } : {}),
+          rate_card: {
+            deal_types: form.deal_types, require_fee: true,
+            video_fee: wantsFee ? Number(form.video_fee) || null : null,
+            live_hour_fee: showLive && Number(form.live_hour_fee) > 0 ? Number(form.live_hour_fee) : null,
+            videos_per_month: Number(form.videos_per_month) || null,
+            commission_pct: form.commission_pct === '' ? null : Number(form.commission_pct),
+            spark_fee_pct: form.spark && form.spark_fee_pct !== '' ? Number(form.spark_fee_pct) : null,
+            note: form.spark ? 'Đồng ý cấp Spark Ads code' : '',
+          },
         }),
       });
       const d = await r.json();
@@ -127,10 +147,10 @@ function ApplyForm({ initial, onDone, onBack }) {
     <div className="form-wrap">
       <div className="row-between" style={{ marginBottom: 14 }}>
         <button className="btn btn-sm" onClick={() => (step === 1 ? onBack() : (setStep(step - 1), setErr('')))}>← {step === 1 ? 'Trang chủ' : 'Quay lại'}</button>
-        <span className="small muted">Bước {step}/3 · ~2 phút</span>
+        <span className="small muted">Bước {step}/4 · ~3 phút</span>
       </div>
       <div className="steps" style={{ marginBottom: 18 }}>
-        {['Thông tin', 'Kênh', 'Nhận mẫu'].map((l, i) => <div key={l} className={i < step ? 'done' : ''}>{l}</div>)}
+        {['Thông tin', 'Kênh', 'Mức cast', 'Nhận mẫu'].map((l, i) => <div key={l} className={i < step ? 'done' : ''}>{l}</div>)}
       </div>
       {err && <div className="alert alert-error" style={{ marginBottom: 12 }}>⚠ {err}</div>}
 
@@ -184,6 +204,53 @@ function ApplyForm({ initial, onDone, onBack }) {
       )}
 
       {step === 3 && (
+        <div className="card stack" style={{ gap: 16 }}>
+          <div className="alert alert-info small">💬 <span>Cho brand biết <b>mức cast bạn mong muốn</b>. Brand dựa vào đây để gửi offer phù hợp — bạn vẫn nhận / trả giá / từ chối từng offer sau.</span></div>
+          <div><label className="label">Hình thức bạn nhận * <span className="muted" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>(chọn nhiều)</span></label>
+            <div className="grid g3" style={{ gap: 8 }}>{DEAL_TYPES.map(d => (
+              <div key={d.v} className={`opt${form.deal_types.includes(d.v) ? ' on' : ''}`} style={{ textAlign: 'left' }} onClick={() => toggleType(d.v)}>
+                <div className="bold small">{form.deal_types.includes(d.v) ? '✓ ' : ''}{d.l}</div><div className="xs muted">{d.s}</div>
+              </div>
+            ))}</div>
+          </div>
+          {wantsFee && (
+            <div>
+              <label className="label">Giá mong muốn / 1 video (VNĐ, gross) *</label>
+              <input className="input" type="number" min="0" step="50000" value={form.video_fee} onChange={set('video_fee')} placeholder={fair.fee ? String(fair.fee) : '800000'} />
+              {fair.fee > 0 && (
+                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '10px 12px', marginTop: 8 }}>
+                  <div className="small">Giá tham khảo cho kênh của bạn: <b style={{ color: 'var(--brand-700)' }}>{vnd(fair.fee)}</b>/video</div>
+                  <div className="xs muted" style={{ margin: '2px 0 8px' }}>Công thức công khai: {fair.formula}</div>
+                  <div className="row wrap" style={{ gap: 6 }}>
+                    {[['Dễ chốt', 0.8], ['Hợp lý', 1], ['Cao', 1.3]].map(([l, k]) => {
+                      const v = Math.round((fair.fee * k) / 10000) * 10000;
+                      return <button key={l} type="button" className={`btn btn-sm${Number(form.video_fee) === v ? ' btn-primary' : ''}`} onClick={() => pick('video_fee', String(v))}>{l} · {fmtMoney(v)}</button>;
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div>
+            <label className="label">Số video bạn muốn nhận / tháng *</label>
+            <div className="row wrap" style={{ gap: 6 }}>
+              {[1, 2, 4, 8].map(n => <button key={n} type="button" className={`btn btn-sm${Number(form.videos_per_month) === n ? ' btn-primary' : ''}`} onClick={() => pick('videos_per_month', n)}>{n} video</button>)}
+              <input className="input input-sm" style={{ width: 90 }} type="number" min="1" max="60" value={form.videos_per_month} onChange={set('videos_per_month')} aria-label="Số video khác" />
+            </div>
+          </div>
+          <div className="grid g2" style={{ gap: 12 }}>
+            <div><label className="label">% hoa hồng mong muốn</label><input className="input" type="number" min="0" max="100" value={form.commission_pct} onChange={set('commission_pct')} /><div className="hint">Phổ biến 10–20% / đơn</div></div>
+            {showLive && <div><label className="label">Giá livestream / giờ (VNĐ)</label><input className="input" type="number" min="0" step="50000" value={form.live_hour_fee} onChange={set('live_hour_fee')} placeholder={fair.live_hour ? String(fair.live_hour) : ''} /></div>}
+          </div>
+          <label className="chk"><input type="checkbox" checked={form.spark} onChange={set('spark')} /><span>Đồng ý cấp <b>Spark Ads code</b> để brand chạy quảng cáo video{form.spark && <> — phụ phí <input className="input input-sm" style={{ width: 70, display: 'inline-block', margin: '0 4px' }} type="number" min="0" max="100" value={form.spark_fee_pct} onChange={set('spark_fee_pct')} placeholder="20" />% giá video</>}</span></label>
+          {wantsFee && Number(form.video_fee) > 0 && (
+            <div className="alert alert-ok small">📊 <span>Ước tính nếu đủ {form.videos_per_month} video/tháng: <b>{vnd(Number(form.video_fee) * (Number(form.videos_per_month) || 1))}</b> (gross) + {form.commission_pct || 0}% hoa hồng mỗi đơn.</span></div>
+          )}
+          <button className="btn btn-primary btn-lg btn-block" onClick={next3}>Tiếp theo →</button>
+        </div>
+      )}
+
+      {step === 4 && (
         <div className="card stack" style={{ gap: 14 }}>
           <div><label className="label">Tỉnh / thành nhận mẫu *</label>
             <select className="select" value={form.address} onChange={set('address')}><option value="">Chọn tỉnh/thành…</option>{CITIES.map(c => <option key={c}>{c}</option>)}</select>
@@ -192,7 +259,7 @@ function ApplyForm({ initial, onDone, onBack }) {
           <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 14 }}>
             <div className="bold small" style={{ color: 'var(--brand-700)', marginBottom: 8 }}>Tóm tắt hồ sơ</div>
             <div className="grid g2" style={{ gap: 8 }}>
-              {[['Họ tên', form.name], ['Kênh', form.link], ['Followers', fmtNum(form.followers)], ['Score', score.toFixed(2)], ['Nền tảng', form.platform], ['Lĩnh vực', nicheLabel(form.niche)]].map(([l, v]) => (
+              {[['Họ tên', form.name], ['Kênh', form.link], ['Followers', fmtNum(form.followers)], ['Score', score.toFixed(2)], ['Nền tảng', form.platform], ['Lĩnh vực', nicheLabel(form.niche)], ['Mức cast', wantsFee ? `${fmtMoney(form.video_fee)}đ/video` : 'Barter'], ['Video / tháng', `${form.videos_per_month} video · HH ${form.commission_pct || 0}%`]].map(([l, v]) => (
                 <div key={l}><div className="xs muted bold">{l}</div><div className="small bold ellipsis">{v || '—'}</div></div>
               ))}
             </div>

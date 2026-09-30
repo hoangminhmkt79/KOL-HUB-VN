@@ -144,7 +144,7 @@ function OfferModal({ onClose, onSaved, toast, camps, rules, preset = null }) {
         {creator ? (
           <div className="row" style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '8px 10px' }}>
             <Avatar name={creator.name} size={28} />
-            <div className="grow"><b className="small">{creator.name}</b><div className="xs muted">{creator.handle ? '@' + creator.handle + ' · ' : ''}{fmtNum(creator.followers)} followers · {fmtNum(creator.avg_views)} views TB</div></div>
+            <div className="grow"><b className="small">{creator.name}</b><div className="xs muted">{creator.handle ? '@' + creator.handle + ' · ' : ''}{fmtNum(creator.followers)} followers · {fmtNum(creator.avg_views)} views TB</div>{creator.ask_fee != null && <div className="xs" style={{ color: 'var(--brand-700)' }}>Creator mong muốn: <b>{fmtNum(creator.ask_fee)}đ/video</b>{creator.ask_videos ? ` · ${creator.ask_videos} video/tháng` : ''}</div>}</div>
             <button className="btn btn-sm" onClick={() => setCreator(null)}>Đổi</button>
           </div>
         ) : <Field label="Creator *"><CreatorPicker onPick={setCreator} /></Field>}

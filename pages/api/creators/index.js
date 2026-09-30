@@ -8,6 +8,7 @@ import { logEvent } from '../../../lib/events';
 import { handleFromLink, NICHES, PLATFORMS, CTYPES } from '../../../lib/constants';
 import { creatorTier } from '../../../lib/pricing';
 import { healthSql, nextAction, HEALTH_FORMULA } from '../../../lib/creatorIntel';
+import { parseRateCard, saveRateCard } from '../../../lib/rateCard';
 
 const PAGE_SIZE = 20;
 const SORTS = {
@@ -25,8 +26,10 @@ function baseSql(w) {
       COALESCE(v.video_count,0) AS video_count, COALESCE(v.videos_pending,0) AS videos_pending,
       COALESCE(v.views_sum,0) AS views_sum, COALESCE(v.gmv_sum,0) AS gmv_sum,
       COALESCE(d.active_deals,0) AS active_deals, d.open_deal_status, COALESCE(d.booked_fee,0) AS booked_fee,
-      GREATEST(c.applied_at, c.updated_at, e.last_event) AS last_activity
+      GREATEST(c.applied_at, c.updated_at, e.last_event) AS last_activity,
+      rc.video_fee AS ask_fee, rc.videos_per_month AS ask_videos, rc.deal_types AS ask_types
     FROM creators c
+    LEFT JOIN rate_cards rc ON rc.creator_id=c.id
     LEFT JOIN LATERAL (
       SELECT COUNT(*) FILTER (WHERE status<>'cancelled')::int AS sample_count,
              COUNT(*) FILTER (WHERE status IN ('approved','shipped','delivered','overdue'))::int AS active_samples,
@@ -139,6 +142,8 @@ async function create(req, res) {
   }
 
   const rules = await getRules();
+  // Bước "Mức cast": creator tự khai giá + số video mong muốn (validate trước khi ghi)
+  const rateCard = b.rate_card && typeof b.rate_card === 'object' ? parseRateCard(b.rate_card) : null;
   const out = await tx(async db => {
     let referredBy = null;
     if (b.ref) {
@@ -166,6 +171,11 @@ async function create(req, res) {
       row = r.rows[0];
     }
     await logEvent(db, { type: 'creator_applied', creator_id: row.id, actor: 'creator', message: `Đăng ký mới · ${followers.toLocaleString('vi-VN')} followers · score ${score}${referredBy ? ' · qua giới thiệu' : ''}${acq ? ` · từ group FB (${acq})` : ''}` });
+    if (rateCard) {
+      await saveRateCard(db, row.id, rateCard);
+      const fee = rateCard.video_fee ? `${rateCard.video_fee.toLocaleString('vi-VN')}đ/video` : 'barter';
+      await logEvent(db, { type: 'rate_card_updated', creator_id: row.id, actor: 'creator', message: `Mức cast mong muốn: ${fee}${rateCard.videos_per_month ? ` · ${rateCard.videos_per_month} video/tháng` : ''} · ${rateCard.deal_types}` });
+    }
     row.status = await screenCreator(db, row, rules);
     return row;
   });

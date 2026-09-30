@@ -56,8 +56,8 @@ export default function Creators({ openCreator, initial = {}, toast, go }) {
       const q = new URLSearchParams(Object.entries({ ...f, page: '' }).filter(([, v]) => v !== '' && v !== 'all'));
       q.set('export', '1');
       const d = await api('/api/creators?' + q.toString());
-      const rows = d.creators.map(c => [c.name, c.handle, c.phone, c.email, SOURCE_L[c.source] || c.source, c.platform, nicheLabel(c.niche), c.followers, c.avg_views, c.score, TIERS[c.tier]?.l, c.health, c.gmv, c.gpv ?? '', c.on_time_rate == null ? '' : Math.round(c.on_time_rate * 100) + '%', c.sample_count, c.video_count, c.active_deals, c.booked_fee, c.next_action?.l || '', c.status, c.address, c.ship_address, fmtDate(c.applied_at), fmtDate(c.last_activity)]);
-      downloadCsv(`kol-${new Date().toISOString().slice(0, 10)}.csv`, ['Tên', 'Handle', 'SĐT', 'Email', 'Nguồn', 'Nền tảng', 'Lĩnh vực', 'Followers', 'Avg views', 'Score', 'Tier', 'Sức khoẻ', 'GMV', 'GMV/view', 'Đúng hạn', 'Số mẫu', 'Số video', 'Deal đang chạy', 'Phí đã chốt', 'Việc tiếp theo', 'Status', 'Tỉnh', 'Địa chỉ nhận', 'Ngày ĐK', 'Hoạt động cuối'], rows);
+      const rows = d.creators.map(c => [c.name, c.handle, c.phone, c.email, SOURCE_L[c.source] || c.source, c.platform, nicheLabel(c.niche), c.followers, c.avg_views, c.score, TIERS[c.tier]?.l, c.health, c.gmv, c.gpv ?? '', c.on_time_rate == null ? '' : Math.round(c.on_time_rate * 100) + '%', c.sample_count, c.video_count, c.active_deals, c.booked_fee, c.ask_fee ?? '', c.ask_videos ?? '', c.next_action?.l || '', c.status, c.address, c.ship_address, fmtDate(c.applied_at), fmtDate(c.last_activity)]);
+      downloadCsv(`kol-${new Date().toISOString().slice(0, 10)}.csv`, ['Tên', 'Handle', 'SĐT', 'Email', 'Nguồn', 'Nền tảng', 'Lĩnh vực', 'Followers', 'Avg views', 'Score', 'Tier', 'Sức khoẻ', 'GMV', 'GMV/view', 'Đúng hạn', 'Số mẫu', 'Số video', 'Deal đang chạy', 'Phí đã chốt', 'Giá mong muốn/video', 'Video mong muốn/tháng', 'Việc tiếp theo', 'Status', 'Tỉnh', 'Địa chỉ nhận', 'Ngày ĐK', 'Hoạt động cuối'], rows);
       toast(`Đã xuất ${rows.length} creator`);
     } catch (e) { toast(e.message); }
   };
@@ -112,11 +112,11 @@ export default function Creators({ openCreator, initial = {}, toast, go }) {
           <table className="table kol-table">
             <thead><tr>
               <th style={{ width: 32 }}><input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? sel.filter(id => !cs.some(c => c.id === id)) : [...new Set([...sel, ...cs.map(c => c.id)])])} aria-label="Chọn tất cả" /></th>
-              <th>Creator</th><th className="hide-sm">Kênh</th><th title={data?.health_formula}>Sức khoẻ ⓘ</th><th className="hide-sm">Hiệu quả</th><th className="hide-sm">Mẫu · Video · Deal</th><th className="hide-sm">Việc tiếp theo</th><th className="hide-sm">Trạng thái</th>
+              <th>Creator</th><th className="hide-sm">Kênh</th><th title={data?.health_formula}>Sức khoẻ ⓘ</th><th className="hide-sm">Hiệu quả</th><th className="hide-sm">Mức cast</th><th className="hide-sm">Mẫu · Video · Deal</th><th className="hide-sm">Việc tiếp theo</th><th className="hide-sm">Trạng thái</th>
             </tr></thead>
             <tbody>
-              {loading && !cs.length ? <tr><td colSpan={8} className="empty">Đang tải…</td></tr> :
-               !cs.length ? <tr><td colSpan={8} className="empty">Không có creator phù hợp</td></tr> :
+              {loading && !cs.length ? <tr><td colSpan={9} className="empty">Đang tải…</td></tr> :
+               !cs.length ? <tr><td colSpan={9} className="empty">Không có creator phù hợp</td></tr> :
                cs.map(c => {
                 const s = Number(c.score) || 0;
                 const a = c.next_action;
@@ -147,6 +147,10 @@ export default function Creators({ openCreator, initial = {}, toast, go }) {
                     <td className="small tnum hide-sm">
                       <b style={{ color: c.gmv > 0 ? 'var(--brand-700)' : 'var(--muted)' }}>{c.gmv > 0 ? fmtMoney(c.gmv) + 'đ' : '—'}</b>
                       <div className="xs muted">{c.gpv != null ? `${fmtNum(c.gpv)}đ/view` : 'chưa có view'}{c.on_time_rate != null ? ` · đúng hạn ${Math.round(c.on_time_rate * 100)}%` : ''}</div>
+                    </td>
+                    <td className="small tnum hide-sm">
+                      {c.ask_fee != null ? <b>{fmtMoney(c.ask_fee)}đ</b> : <span className="muted">{c.ask_types ? 'Barter' : '—'}</span>}
+                      {c.ask_videos ? <div className="xs muted">{c.ask_videos} video/tháng</div> : null}
                     </td>
                     <td className="small tnum hide-sm">{c.sample_count} · {c.video_count} · {c.active_deals}{c.booked_fee > 0 && <div className="xs muted">phí {fmtMoney(c.booked_fee)}đ</div>}</td>
                     <td className="hide-sm" onClick={e => e.stopPropagation()}>
@@ -197,7 +201,7 @@ export function CreatorDrawer({ id, onClose, toast, onChanged }) {
 
   if (error) return <Drawer onClose={onClose} title="Lỗi"><div className="alert alert-error">{error}</div></Drawer>;
   if (!data) return <Drawer onClose={onClose} title="Đang tải…"><div className="empty">Đang tải…</div></Drawer>;
-  const { creator: c, samples, videos, events, referrals } = data;
+  const { creator: c, samples, videos, events, referrals, rate_card: rc } = data;
   const portal = typeof window !== 'undefined' ? `${window.location.origin}/portal/${c.portal_token}` : '';
 
   return (
@@ -222,6 +226,19 @@ export function CreatorDrawer({ id, onClose, toast, onChanged }) {
             <div>📍 {c.ship_address || <span className="muted">{c.address || '—'} (chưa có địa chỉ chi tiết)</span>}</div>
             <div>🔗 <a className="link" href={profileUrl(c.tiktok_link)} target="_blank" rel="noreferrer">{c.tiktok_link || '—'}</a></div>
           </div>
+        </div>
+
+        <div className="card" style={{ padding: 14 }}>
+          <div className="card-title">💵 Mức cast creator đề xuất</div>
+          {rc ? (
+            <div className="grid g3" style={{ gap: 8 }}>
+              {[['Giá / video', rc.video_fee != null ? fmtMoney(rc.video_fee) + 'đ' : 'Barter'], ['Video / tháng', rc.videos_per_month ?? '—'], ['% hoa hồng', rc.commission_pct != null ? rc.commission_pct + '%' : '—'],
+                ['Live / giờ', rc.live_hour_fee != null ? fmtMoney(rc.live_hour_fee) + 'đ' : '—'], ['Spark code', rc.spark_fee_pct != null ? `+${rc.spark_fee_pct}%` : '—'], ['Hình thức', (rc.deal_types || []).join(', ') || '—']].map(([l, v]) => (
+                <div key={l} style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '8px 10px' }}><div className="xs muted bold">{l}</div><div className="bold tnum small">{v}</div></div>
+              ))}
+            </div>
+          ) : <div className="small muted">Creator chưa khai mức cast.</div>}
+          {rc?.note && <div className="xs muted" style={{ marginTop: 6 }}>{rc.note}</div>}
         </div>
 
         <div className="card" style={{ padding: 14 }}>
