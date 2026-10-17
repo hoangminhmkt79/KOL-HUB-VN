@@ -1,13 +1,17 @@
 // Cổng creator: xem tiến độ mẫu, nộp video, cập nhật địa chỉ, khai mã đơn TikTok. Xác thực bằng token riêng.
 import { query, tx } from '../../../lib/db';
 import { route, bad, notFound, HttpError } from '../../../lib/http';
-import { submitVideo } from '../../../lib/automation';
+import { submitVideo, screenCreator } from '../../../lib/automation';
 import { createSampleFromOrder } from '../../../lib/orders';
 import { getRules } from '../../../lib/settings';
 import { logEvent } from '../../../lib/events';
 import { parseRateCard, saveRateCard, normRateCard, RC_COLS } from '../../../lib/rateCard';
+import { parseMoney, NICHES } from '../../../lib/constants';
+import { engagementScore, potentialOf } from '../../../lib/scoring';
 import { creatorAction, publicDeal } from '../../../lib/deals';
 import { fairPrice, creatorTier } from '../../../lib/pricing';
+
+const NICHE_KEYS = NICHES.map(n => n.v);
 
 async function loadCreator(token) {
   if (!token || String(token).length < 16) notFound('Link không hợp lệ.');
@@ -59,6 +63,8 @@ async function view(req) {
       name: c.name, handle: c.handle, status: c.status, address: c.address, ship_address: c.ship_address,
       phone: c.phone ? c.phone.replace(/^(.{3}).*(.{3})$/, '$1****$2') : '', score: Number(c.score) || 0,
       ref_code: c.ref_code, promo_code: c.promo_code, followers: c.followers, applied_at: c.applied_at,
+      avg_views: c.avg_views, niche: c.niche, content_type: c.content_type,
+      profile_incomplete: !(Number(c.avg_views) > 0) || !NICHE_KEYS.includes(c.niche) || !c.address,
     },
     samples: samples.rows, videos: videos.rows, campaigns: camps.rows, referrals: refs.rows[0].n,
     deals: dealList,
@@ -81,6 +87,30 @@ async function act(req, res) {
   if (b.action === 'video') {
     const video = await submitVideo({ creator: c, url: String(b.url || ''), actor: 'creator', sampleId: b.sample_id || null });
     return res.status(201).json({ video: { id: video.id, status: video.status, verified: video.verified } });
+  }
+
+  // Hoàn thiện hồ sơ sau đăng ký nhanh → chấm điểm tự động như form đầy đủ
+  if (b.action === 'profile') {
+    const followers = Math.round(parseMoney(b.followers));
+    const avg = Math.round(parseMoney(b.avg_views));
+    if (!(followers > 0) || followers > 1e8) bad('Nhập số follower (VD: 5000 hoặc 5k).');
+    if (!(avg > 0) || avg > 1e9) bad('Nhập lượt xem trung bình / video (VD: 2000 hoặc 2k).');
+    if (!NICHE_KEYS.includes(b.niche)) bad('Chọn lĩnh vực chính.');
+    const ct = ['video', 'livestream', 'both'].includes(b.content_type) ? b.content_type : 'video';
+    const city = String(b.address || '').trim().slice(0, 200);
+    if (!city) bad('Chọn tỉnh/thành nhận sample.');
+    const score = engagementScore(followers, avg);
+    const rules = await getRules();
+    const out = await tx(async db => {
+      const r = await db.query(
+        `UPDATE creators SET followers=$1, avg_views=$2, niche=$3, content_type=$4, address=$5, score=$6, potential=$7, updated_at=NOW() WHERE id=$8 RETURNING *`,
+        [followers, avg, b.niche, ct, city, score, potentialOf(score), c.id]
+      );
+      await logEvent(db, { type: 'profile_completed', creator_id: c.id, actor: 'creator', message: `Bổ sung số liệu kênh: ${followers.toLocaleString('vi-VN')} follower · ${avg.toLocaleString('vi-VN')} view TB · score ${score}` });
+      const row = r.rows[0];
+      return ['applied', 'pending'].includes(row.status) ? screenCreator(db, row, rules) : row.status;
+    });
+    return { success: true, status: out, score };
   }
 
   if (b.action === 'address') {

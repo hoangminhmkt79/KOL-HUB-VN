@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { CreatorStatus, SampleStatus, VideoStatus, Steps, Badge, Countdown, Stat, useToast, copy, vnd } from '../../components/ui';
-import { trackingUrl, fmtDate, fmtDateTime, fmtNum, fmtMoney, daysUntil, DEAL_STATUS, TIERS, PAYOUT_STATUS, dealTypeLabel, nicheLabel } from '../../lib/constants';
+import { trackingUrl, fmtDate, fmtDateTime, fmtNum, fmtMoney, daysUntil, DEAL_STATUS, TIERS, PAYOUT_STATUS, dealTypeLabel, nicheLabel, NICHES, CITIES, parseMoney } from '../../lib/constants';
 import { payoutSplit } from '../../lib/pricing';
 
 const STEP_LABELS = ['Chờ gửi', 'Đang giao', 'Đã nhận', 'Đã đăng'];
@@ -143,6 +143,30 @@ function DealCard({ d, fair, act, busy, pay }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Sau đăng ký nhanh: bổ sung số liệu kênh để được chấm & duyệt tự động
+function CompleteProfile({ c, act, busy }) {
+  const [f, setF] = useState({ followers: c.followers ? String(c.followers) : '', avg_views: '', niche: '', content_type: 'video', address: c.address || '' });
+  const set = k => e => setF(p => ({ ...p, [k]: e.target.value }));
+  const fl = parseMoney(f.followers), av = parseMoney(f.avg_views);
+  const ok = fl > 0 && av > 0 && f.niche && f.address;
+  return (
+    <div className="card" style={{ marginBottom: 14, borderColor: 'var(--brand-100)', background: 'var(--brand-50)' }}>
+      <div className="bold">⚡ Hoàn thiện hồ sơ (30 giây) để được duyệt ưu tiên</div>
+      <div className="xs muted" style={{ margin: '4px 0 12px' }}>Hồ sơ đủ số liệu được chấm và duyệt tự động. Không cần mật khẩu hay đăng nhập TikTok.</div>
+      <div className="grid g2" style={{ gap: 10 }}>
+        <div><label className="label">Số follower</label><input className="input" inputMode="numeric" value={f.followers} onChange={set('followers')} placeholder="VD: 5000 hoặc 5k" />{fl > 0 && <div className="field-ok">= {fmtNum(fl)}</div>}</div>
+        <div><label className="label">Lượt xem TB / video</label><input className="input" inputMode="numeric" value={f.avg_views} onChange={set('avg_views')} placeholder="VD: 2000 hoặc 2k" />{av > 0 && <div className="field-ok">= {fmtNum(av)} view</div>}</div>
+        <div><label className="label">Lĩnh vực chính</label><select className="select" value={f.niche} onChange={set('niche')}><option value="">Chọn…</option>{NICHES.map(n => <option key={n.v} value={n.v}>{n.l}</option>)}</select></div>
+        <div><label className="label">Tỉnh / thành nhận sample</label><select className="select" value={f.address} onChange={set('address')}><option value="">Chọn…</option>{CITIES.map(x => <option key={x}>{x}</option>)}</select></div>
+      </div>
+      <div className="row wrap" style={{ gap: 6, margin: '10px 0' }}>
+        {[['video', 'Video'], ['livestream', 'Livestream'], ['both', 'Cả hai']].map(([v, l]) => <button key={v} type="button" className={`chip${f.content_type === v ? ' on' : ''}`} onClick={() => setF(p => ({ ...p, content_type: v }))}>{l}</button>)}
+      </div>
+      <button className="btn btn-primary btn-block" disabled={!ok || busy === 'profile'} onClick={() => act('profile', { action: 'profile', ...f }, d => (d.status === 'approved' ? '🎉 Hồ sơ đạt chuẩn — đã được duyệt!' : 'Đã cập nhật — team đang xem hồ sơ'))}>{busy === 'profile' ? 'Đang lưu…' : 'Lưu & gửi duyệt'}</button>
     </div>
   );
 }
@@ -321,6 +345,8 @@ export default function Portal() {
             {c.promo_code && <div className="alert alert-ok" style={{ marginTop: 12 }}>🎟 Mã giảm giá của bạn: <b>{c.promo_code}</b></div>}
             {waiting > 0 && <a href="#offers" className="alert alert-ok" style={{ marginTop: 12, textDecoration: 'none' }}>💌 Bạn có <b>{waiting} offer</b> đang chờ trả lời →</a>}
           </div>
+
+          {c.profile_incomplete && !['rejected', 'prospect'].includes(c.status) && <CompleteProfile c={c} act={act} busy={busy} />}
 
           {activeDeals.length > 0 && (
             <div id="offers" style={{ marginBottom: 4 }}>

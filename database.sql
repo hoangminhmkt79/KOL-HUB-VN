@@ -268,6 +268,8 @@ CREATE TABLE IF NOT EXISTS fb_posts (
 CREATE INDEX IF NOT EXISTS fb_posts_group_idx ON fb_posts(group_id);
 CREATE INDEX IF NOT EXISTS creators_acq_idx ON creators(acq_code);
 ALTER TABLE rate_cards ADD COLUMN IF NOT EXISTS videos_per_month INTEGER;
+ALTER TABLE rate_cards ADD COLUMN IF NOT EXISTS package_fee NUMERIC(14,0);
+ALTER TABLE rate_cards ADD COLUMN IF NOT EXISTS package_videos VARCHAR(10) NOT NULL DEFAULT '';
 ALTER TABLE rate_cards ADD COLUMN IF NOT EXISTS deal_types VARCHAR(40) NOT NULL DEFAULT 'barter,hybrid,fee';
 -- Link tracking đa kênh (Zalo, TikTok, Fanpage, Threads…) — không cần group
 CREATE TABLE IF NOT EXISTS track_links (

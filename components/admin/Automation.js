@@ -3,6 +3,9 @@ import { api, useLoad, Field, Badge, copy } from '../ui';
 import { NICHES, fmtDateTime } from '../../lib/constants';
 
 const RULE_FIELDS = [
+  ['Landing tuyển creator', [
+    ['monthly_sample_slots', 'Quota slot sample / tháng (hiện "Chỉ còn X slot" khi không có chiến dịch công khai — số thật, trừ số đã đăng ký)', 'num'],
+  ]],
   ['Khách hàng (brand) & lead', [
     ['accepted_services', 'Dịch vụ đang nhận (mã, cách nhau dấu phẩy): kol_booking, kol_strategy, gmv_max, livestream, ads_audit, shop_ops, google_fb', 'text'],
     ['coi_niches', 'Ngách cần chấp thuận công ty (xung đột lợi ích): lam_dep, suc_khoe, me_be…', 'text'],
