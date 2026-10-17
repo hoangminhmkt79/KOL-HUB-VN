@@ -18,13 +18,22 @@ async function list(req, res) {
              (SELECT COUNT(*)::int FROM payouts WHERE status='paid' AND (due_at IS NULL OR paid_at <= due_at + INTERVAL '1 day')) AS paid_on_time`),
     getRules(),
   ]);
-  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
+  // Slot thật: tổng slot còn trống của chiến dịch công khai; nếu không có → quota tháng (cài đặt) trừ số creator đã đăng ký tháng này
+  const campLeft = camps.rows.reduce((t, c) => t + (Number(c.slots_left) || 0), 0);
+  let slots;
+  if (campLeft > 0) slots = { left: campLeft, source: 'campaigns' };
+  else {
+    const used = await query(`SELECT COUNT(*)::int AS n FROM creators WHERE status<>'prospect' AND applied_at >= date_trunc('month', NOW())`);
+    slots = { left: Math.max(0, Number(rules.monthly_sample_slots || 0) - used.rows[0].n), source: 'monthly' };
+  }
+  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
   return {
     campaigns: camps.rows.map(c => ({
       ...c, fee_min: Number(c.fee_min), fee_max: Number(c.fee_max), commission_pct: Number(c.commission_pct),
       deposit_pct: Number(c.deposit_pct), brief_short: (c.brief || '').slice(0, 220),
     })),
     stats: stats.rows[0],
+    slots,
     terms: { pit_threshold: rules.pit_threshold, pit_rate_pct: rules.pit_rate_pct, cpm_vnd: rules.cpm_vnd, deposit_pct: rules.deposit_pct, payment_days: rules.payment_days },
   };
 }

@@ -18,7 +18,7 @@ const ago = d => {
 };
 
 export default function Creators({ openCreator, initial = {}, toast, go }) {
-  const [f, setF] = useState({ segment: initial.segment || '', status: initial.status || 'all', niche: 'all', ct: 'all', source: 'all', tier: 'all', sort: 'health', search: '', page: 1 });
+  const [f, setF] = useState({ segment: initial.segment || '', status: initial.status || 'all', niche: 'all', ct: 'all', source: 'all', tier: 'all', followers: 'all', sort: 'health', search: '', page: 1 });
   const set = (k, v) => setF(p => ({ ...p, [k]: v, page: k === 'page' ? v : 1 }));
   const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' && v !== 'all')).toString();
   const { data, loading, error, reload } = useLoad(() => api('/api/creators?' + qs), [qs]);
@@ -56,8 +56,8 @@ export default function Creators({ openCreator, initial = {}, toast, go }) {
       const q = new URLSearchParams(Object.entries({ ...f, page: '' }).filter(([, v]) => v !== '' && v !== 'all'));
       q.set('export', '1');
       const d = await api('/api/creators?' + q.toString());
-      const rows = d.creators.map(c => [c.name, c.handle, c.phone, c.email, SOURCE_L[c.source] || c.source, c.platform, nicheLabel(c.niche), c.followers, c.avg_views, c.score, TIERS[c.tier]?.l, c.health, c.gmv, c.gpv ?? '', c.on_time_rate == null ? '' : Math.round(c.on_time_rate * 100) + '%', c.sample_count, c.video_count, c.active_deals, c.booked_fee, c.ask_fee ?? '', c.ask_videos ?? '', c.next_action?.l || '', c.status, c.address, c.ship_address, fmtDate(c.applied_at), fmtDate(c.last_activity)]);
-      downloadCsv(`kol-${new Date().toISOString().slice(0, 10)}.csv`, ['Tên', 'Handle', 'SĐT', 'Email', 'Nguồn', 'Nền tảng', 'Lĩnh vực', 'Followers', 'Avg views', 'Score', 'Tier', 'Sức khoẻ', 'GMV', 'GMV/view', 'Đúng hạn', 'Số mẫu', 'Số video', 'Deal đang chạy', 'Phí đã chốt', 'Giá mong muốn/video', 'Video mong muốn/tháng', 'Việc tiếp theo', 'Status', 'Tỉnh', 'Địa chỉ nhận', 'Ngày ĐK', 'Hoạt động cuối'], rows);
+      const rows = d.creators.map(c => [c.name, c.handle, c.phone, c.email, SOURCE_L[c.source] || c.source, c.platform, nicheLabel(c.niche), c.followers, c.avg_views, c.score, TIERS[c.tier]?.l, c.health, c.gmv, c.gpv ?? '', c.on_time_rate == null ? '' : Math.round(c.on_time_rate * 100) + '%', c.sample_count, c.video_count, c.active_deals, c.booked_fee, c.ask_fee ?? '', c.ask_package ?? '', c.ask_videos ?? '', c.next_action?.l || '', c.status, c.address, c.ship_address, fmtDate(c.applied_at), fmtDate(c.last_activity)]);
+      downloadCsv(`kol-${new Date().toISOString().slice(0, 10)}.csv`, ['Tên', 'Handle', 'SĐT', 'Email', 'Nguồn', 'Nền tảng', 'Lĩnh vực', 'Followers', 'Avg views', 'Score', 'Tier', 'Sức khoẻ', 'GMV', 'GMV/view', 'Đúng hạn', 'Số mẫu', 'Số video', 'Deal đang chạy', 'Phí đã chốt', 'Giá mong muốn/video', 'Booking gói 2–3 video', 'Video mong muốn/tháng', 'Việc tiếp theo', 'Status', 'Tỉnh', 'Địa chỉ nhận', 'Ngày ĐK', 'Hoạt động cuối'], rows);
       toast(`Đã xuất ${rows.length} creator`);
     } catch (e) { toast(e.message); }
   };
@@ -83,6 +83,9 @@ export default function Creators({ openCreator, initial = {}, toast, go }) {
         </select>
         <select className="select input-sm" style={{ width: 'auto' }} value={f.tier} onChange={e => set('tier', e.target.value)}>
           <option value="all">Mọi tier</option>{Object.entries(TIERS).map(([k, t]) => <option key={k} value={k}>{t.l}</option>)}
+        </select>
+        <select className="select input-sm" style={{ width: 'auto' }} value={f.followers} onChange={e => set('followers', e.target.value)}>
+          <option value="all">Mọi mức follower</option><option value="lt1k">&lt; 1k</option><option value="1k_10k">1k – 10k</option><option value="10k_50k">10k – 50k</option><option value="50k_100k">50k – 100k</option><option value="gt100k">&gt; 100k</option>
         </select>
         <select className="select input-sm" style={{ width: 'auto' }} value={f.source} onChange={e => set('source', e.target.value)}>
           {SOURCES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -149,7 +152,7 @@ export default function Creators({ openCreator, initial = {}, toast, go }) {
                       <div className="xs muted">{c.gpv != null ? `${fmtNum(c.gpv)}đ/view` : 'chưa có view'}{c.on_time_rate != null ? ` · đúng hạn ${Math.round(c.on_time_rate * 100)}%` : ''}</div>
                     </td>
                     <td className="small tnum hide-sm">
-                      {c.ask_fee != null ? <b>{fmtMoney(c.ask_fee)}đ</b> : <span className="muted">{c.ask_types ? 'Barter' : '—'}</span>}
+                      {c.ask_fee != null ? <b>{fmtMoney(c.ask_fee)}đ</b> : c.ask_package != null ? <><b>{fmtMoney(c.ask_package)}đ</b><div className="xs muted">gói 2–3 video</div></> : <span className="muted">{c.ask_types ? 'Barter' : '—'}</span>}
                       {c.ask_videos ? <div className="xs muted">{c.ask_videos} video/tháng</div> : null}
                     </td>
                     <td className="small tnum hide-sm">{c.sample_count} · {c.video_count} · {c.active_deals}{c.booked_fee > 0 && <div className="xs muted">phí {fmtMoney(c.booked_fee)}đ</div>}</td>
@@ -232,7 +235,7 @@ export function CreatorDrawer({ id, onClose, toast, onChanged }) {
           <div className="card-title">💵 Mức cast creator đề xuất</div>
           {rc ? (
             <div className="grid g3" style={{ gap: 8 }}>
-              {[['Giá / video', rc.video_fee != null ? fmtMoney(rc.video_fee) + 'đ' : 'Barter'], ['Video / tháng', rc.videos_per_month ?? '—'], ['% hoa hồng', rc.commission_pct != null ? rc.commission_pct + '%' : '—'],
+              {[['Giá / video', rc.video_fee != null ? fmtMoney(rc.video_fee) + 'đ' : rc.package_fee != null ? '—' : 'Barter'], ['Booking gói 2–3 video', rc.package_fee != null ? fmtMoney(rc.package_fee) + 'đ' : '—'], ['Video / tháng', rc.videos_per_month ?? '—'], ['% hoa hồng', rc.commission_pct != null ? rc.commission_pct + '%' : '—'],
                 ['Live / giờ', rc.live_hour_fee != null ? fmtMoney(rc.live_hour_fee) + 'đ' : '—'], ['Spark code', rc.spark_fee_pct != null ? `+${rc.spark_fee_pct}%` : '—'], ['Hình thức', (rc.deal_types || []).join(', ') || '—']].map(([l, v]) => (
                 <div key={l} style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '8px 10px' }}><div className="xs muted bold">{l}</div><div className="bold tnum small">{v}</div></div>
               ))}

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { NICHES, PLATFORMS, CTYPES, CITIES, GMV_OPTS, DEAL_TYPES, dealTypeLabel, nicheLabel, fmtNum, fmtDate, fmtMoney } from '../lib/constants';
-import { payoutSplit, NICHE_MULT, fairPrice } from '../lib/pricing';
+import { dealTypeLabel, nicheLabel, fmtNum, fmtDate, fmtMoney, parseMoney, normalizeTikTok } from '../lib/constants';
+import { payoutSplit } from '../lib/pricing';
 import { Modal, Stat, vnd } from '../components/ui';
 
 // Mặc định công bố (docs/DEBATE.md) — campaign có thể ghi đè cọc / hạn trả
@@ -69,244 +69,164 @@ function BriefModal({ c, onClose, onApply }) {
         </div>
         {c.contact_name && <div className="small">👤 Người liên hệ: <b>{c.contact_name}</b></div>}
         <button className="btn btn-primary btn-block" disabled={c.slots_left !== undefined && c.slots_left <= 0} onClick={onApply}>Đăng ký để ứng tuyển</button>
-        <div className="hint" style={{ textAlign: 'center', marginTop: -6 }}>Sau khi được duyệt, bạn đề xuất giá hoặc nhận offer trong trang cá nhân.</div>
+        <div className="hint" style={{ textAlign: 'center', marginTop: -6 }}>Đăng ký 30 giây — team liên hệ qua Zalo trong 24h.</div>
       </div>
     </Modal>
   );
 }
 
-const EMPTY = { name: '', email: '', phone: '', link: '', followers: '', avg_views: '', avg_viewers: '', platform: 'TikTok', ct: '', niche: '', gmv_kenh: '', address: '', website: '', consent: false,
-  deal_types: ['barter', 'hybrid'], video_fee: '', videos_per_month: 2, live_hour_fee: '', commission_pct: 15, spark: false, spark_fee_pct: '' };
-const calcScore = (f, v) => { const F = parseInt(f) || 0; return F > 0 ? Math.round(((parseInt(v) || 0) / F) * 100) / 100 : 0; };
-const scoreTone = s => (s >= 0.3 ? 'green' : s >= 0.15 ? 'amber' : 'red');
-const scoreText = s => (s >= 0.3 ? 'Rất tốt — ưu tiên duyệt' : s >= 0.15 ? 'Tốt — có tiềm năng' : 'Còn thấp — nên cải thiện chất lượng content');
 
-function ApplyForm({ initial, onDone, onBack }) {
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ ...EMPTY, ...initial });
-  const [err, setErr] = useState('');
+// ================= Form đăng ký nhanh (5 trường, mobile-first) =================
+const FEE_CHIPS = [[300000, '300k'], [500000, '500k'], [1000000, '1 triệu'], [2000000, '2 triệu']];
+const PHONE_RE = /^(\+84|84|0)[0-9]{9,10}$/;
+const EMPTY = { name: '', phone: '', link: '', followers: '', fee: '', website: '' };
+
+function validate(f) {
+  const e = {};
+  if (!f.name.trim()) e.name = 'Nhập họ tên hoặc nickname của bạn.';
+  if (!PHONE_RE.test(f.phone.replace(/[\s.-]/g, ''))) e.phone = 'Số Zalo chưa đúng (VD: 0901234567).';
+  if (!normalizeTikTok(f.link).link) e.link = 'Dán link kênh TikTok (VD: tiktok.com/@tenkenh) hoặc @tenkenh.';
+  const fl = parseMoney(f.followers);
+  if (!(fl > 0)) e.followers = 'Nhập số follower (VD: 5000 hoặc 5k).';
+  const fee = parseMoney(f.fee);
+  if (!(fee >= 50000)) e.fee = 'Nhập con số cụ thể (VD: 500.000đ) — không để trống.';
+  return e;
+}
+
+function QuickForm({ initial, onDone }) {
+  const [f, setF] = useState({ ...EMPTY, ...initial });
+  const [err, setErr] = useState({});
+  const [touched, setTouched] = useState({});
+  const [serverErr, setServerErr] = useState('');
   const [loading, setLoading] = useState(false);
-  const set = k => e => { setForm(p => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })); setErr(''); };
-  const pick = (k, v) => { setForm(p => ({ ...p, [k]: v })); setErr(''); };
-  const score = calcScore(form.followers, form.avg_views);
-  const showLive = form.ct === 'livestream' || form.ct === 'both';
+  const refs = { name: useRef(), phone: useRef(), link: useRef(), followers: useRef(), fee: useRef() };
+  useEffect(() => { setF(p => ({ ...p, ...initial })); }, [initial]);
 
-  const next1 = () => {
-    if (!form.name.trim() || !form.link.trim() || !form.followers || !form.avg_views) return setErr('Vui lòng điền họ tên, link kênh, followers và avg views.');
-    if (!form.phone.trim() && !form.email.trim()) return setErr('Cần SĐT hoặc email để liên lạc.');
-    if (form.phone.trim() && !/^(\+84|0)[0-9]{9,10}$/.test(form.phone.replace(/\s/g, ''))) return setErr('SĐT chưa đúng (VD: 0901234567).');
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setErr('Email chưa đúng định dạng.');
-    setStep(2);
+  const set = k => e => {
+    const v = e.target.value;
+    setF(p => { const n = { ...p, [k]: v }; if (touched[k]) setErr(validate(n)); return n; });
+    setServerErr('');
   };
-  const next2 = () => {
-    if (!form.platform || !form.ct || !form.niche) return setErr('Chọn nền tảng, loại nội dung và lĩnh vực.');
-    if (showLive && !form.avg_viewers) return setErr('Điền số người xem trung bình mỗi livestream.');
-    setStep(3);
-  };
-  // Bước "Mức cast": creator tự đề xuất giá + số video
-  const fair = fairPrice({ avg_views: form.avg_views, niche: form.niche }, { cpm_vnd: PAY_DEFAULTS.cpm_vnd || 50000 });
-  const wantsFee = form.deal_types.some(t => t !== 'barter');
-  const toggleType = v => setForm(p => ({ ...p, deal_types: p.deal_types.includes(v) ? p.deal_types.filter(x => x !== v) : [...p.deal_types, v] }));
-  const next3 = () => {
-    if (!form.deal_types.length) return setErr('Chọn ít nhất 1 hình thức hợp tác.');
-    if (wantsFee && !(Number(form.video_fee) > 0)) return setErr('Nhập giá mong muốn cho 1 video (hoặc chỉ chọn Barter).');
-    if (!(Number(form.videos_per_month) >= 1)) return setErr('Chọn số video bạn muốn nhận mỗi tháng.');
-    setErr(''); setStep(4);
-  };
-  const submit = async () => {
-    if (!form.address) return setErr('Chọn tỉnh/thành nhận mẫu.');
-    if (!form.consent) return setErr('Vui lòng tick đồng ý xử lý dữ liệu cá nhân để gửi đơn.');
+  const blur = k => () => { setTouched(t => ({ ...t, [k]: true })); setErr(validate(f)); };
+  const tt = normalizeTikTok(f.link);
+  const followers = parseMoney(f.followers);
+  const fee = parseMoney(f.fee);
+
+  const submit = async e => {
+    e.preventDefault();
+    const v = validate(f);
+    setErr(v); setTouched({ name: 1, phone: 1, link: 1, followers: 1, fee: 1 });
+    const first = ['name', 'phone', 'link', 'followers', 'fee'].find(k => v[k]);
+    if (first) { refs[first].current?.focus(); return; }
     setLoading(true);
     try {
       const r = await fetch('/api/creators', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: form.name, email: form.email, phone: form.phone.replace(/\s/g, ''), tiktok_link: form.link,
-          followers: form.followers, avg_views: form.avg_views, avg_viewers: form.avg_viewers,
-          platform: form.platform, content_type: form.ct, niche: form.niche, channel_gmv: form.gmv_kenh,
-          address: form.address, ref: form.ref, website: form.website, consent: true, ...(form.acq ? { acq: form.acq } : {}), ...(form.utm ? { utm: form.utm } : {}),
-          rate_card: {
-            deal_types: form.deal_types, require_fee: true,
-            video_fee: wantsFee ? Number(form.video_fee) || null : null,
-            live_hour_fee: showLive && Number(form.live_hour_fee) > 0 ? Number(form.live_hour_fee) : null,
-            videos_per_month: Number(form.videos_per_month) || null,
-            commission_pct: form.commission_pct === '' ? null : Number(form.commission_pct),
-            spark_fee_pct: form.spark && form.spark_fee_pct !== '' ? Number(form.spark_fee_pct) : null,
-            note: form.spark ? 'Đồng ý cấp Spark Ads code' : '',
-          },
+          quick: true, consent: true, website: f.website,
+          name: f.name.trim(), phone: f.phone.replace(/[\s.-]/g, ''), tiktok_link: f.link.trim(),
+          followers: f.followers, package_fee: f.fee,
+          ...(f.ref ? { ref: f.ref } : {}), ...(f.acq ? { acq: f.acq } : {}), ...(f.utm ? { utm: f.utm } : {}),
         }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Gửi đơn thất bại.');
-      onDone({ ...d, name: form.name });
-    } catch (e) { setErr(e.message); }
-    finally { setLoading(false); }
+      if (!r.ok) throw new Error(d.error || 'Gửi chưa được, thử lại giúp mình nhé.');
+      onDone({ ...d, name: f.name.trim() });
+    } catch (x) { setServerErr(x.message); } finally { setLoading(false); }
   };
 
+  const fieldErr = k => touched[k] && err[k];
+  const input = (k, props) => (
+    <input ref={refs[k]} className={`input input-lg${fieldErr(k) ? ' invalid' : ''}`} value={f[k]} onChange={set(k)} onBlur={blur(k)}
+      aria-invalid={!!fieldErr(k)} aria-describedby={`${k}-msg`} {...props} />
+  );
+
   return (
-    <div className="form-wrap">
-      <div className="row-between" style={{ marginBottom: 14 }}>
-        <button className="btn btn-sm" onClick={() => (step === 1 ? onBack() : (setStep(step - 1), setErr('')))}>← {step === 1 ? 'Trang chủ' : 'Quay lại'}</button>
-        <span className="small muted">Bước {step}/4 · ~3 phút</span>
+    <form onSubmit={submit} noValidate className="stack" style={{ gap: 14 }}>
+      <div>
+        <label className="label" htmlFor="f-name">Họ tên / Nickname</label>
+        {input('name', { id: 'f-name', autoComplete: 'name', placeholder: 'Ví dụ: Thảo Nguyên (Reviewer)' })}
+        {fieldErr('name') && <div className="field-err" id="name-msg">{err.name}</div>}
       </div>
-      <div className="steps" style={{ marginBottom: 18 }}>
-        {['Thông tin', 'Kênh', 'Mức cast', 'Nhận mẫu'].map((l, i) => <div key={l} className={i < step ? 'done' : ''}>{l}</div>)}
+      <div>
+        <label className="label" htmlFor="f-phone">Số điện thoại / Zalo</label>
+        {input('phone', { id: 'f-phone', type: 'tel', inputMode: 'tel', autoComplete: 'tel', placeholder: 'Số Zalo để team gửi thông tin nhận sample' })}
+        {fieldErr('phone') && <div className="field-err" id="phone-msg">{err.phone}</div>}
       </div>
-      {err && <div className="alert alert-error" style={{ marginBottom: 12 }}>⚠ {err}</div>}
-
-      {step === 1 && (
-        <div className="card stack" style={{ gap: 14 }}>
-          <div className="grid g2" style={{ gap: 12 }}>
-            <div><label className="label">Họ tên *</label><input className="input" value={form.name} onChange={set('name')} placeholder="Nguyễn Văn A" /></div>
-            <div><label className="label">Link kênh *</label><input className="input" value={form.link} onChange={set('link')} placeholder="tiktok.com/@handle" /></div>
-            <div><label className="label">Số điện thoại</label><input className="input" type="tel" value={form.phone} onChange={set('phone')} placeholder="0901 234 567" /></div>
-            <div><label className="label">Email</label><input className="input" type="email" value={form.email} onChange={set('email')} placeholder="ban@email.com" /></div>
-          </div>
-          <div className="hint" style={{ marginTop: -6 }}>Chỉ cần SĐT <b>hoặc</b> email. SĐT giúp tự nhận diện đơn mẫu TikTok của bạn nhanh hơn.</div>
-          <div className="grid g2" style={{ gap: 12 }}>
-            <div><label className="label">Followers *</label><input className="input" type="number" min="0" value={form.followers} onChange={set('followers')} placeholder="15000" /></div>
-            <div><label className="label">Avg views / video *</label><input className="input" type="number" min="0" value={form.avg_views} onChange={set('avg_views')} placeholder="5000" /></div>
-          </div>
-          <div><label className="label">Doanh thu kênh / tháng (không bắt buộc)</label>
-            <select className="select" value={form.gmv_kenh} onChange={set('gmv_kenh')}><option value="">Chọn mức gần đúng…</option>{GMV_OPTS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}</select>
-          </div>
-          {parseInt(form.followers) > 0 && form.avg_views && (
-            <div className={`alert tone-${scoreTone(score)}`} style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div><div className="bold small">Engagement score</div><div className="xs">{scoreText(score)}</div></div>
-              <div style={{ fontSize: 26, fontWeight: 900 }} className="tnum">{score.toFixed(2)}</div>
-            </div>
-          )}
-          <input tabIndex={-1} autoComplete="off" value={form.website} onChange={set('website')} style={{ position: 'absolute', left: -9999, width: 1, height: 1 }} aria-hidden="true" />
-          <button className="btn btn-primary btn-lg btn-block" onClick={next1}>Tiếp theo →</button>
+      <div>
+        <label className="label" htmlFor="f-link">Link kênh TikTok cá nhân</label>
+        {input('link', { id: 'f-link', inputMode: 'url', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false, placeholder: 'Dán link kênh TikTok của bạn vào đây' })}
+        {fieldErr('link') ? <div className="field-err" id="link-msg">{err.link}</div> : tt.handle && <div className="field-ok">✓ Kênh @{tt.handle}</div>}
+      </div>
+      <div>
+        <label className="label" htmlFor="f-followers">Số follower TikTok</label>
+        {input('followers', { id: 'f-followers', inputMode: 'numeric', placeholder: 'Ví dụ: 5000 hoặc 5k' })}
+        {fieldErr('followers') ? <div className="field-err" id="followers-msg">{err.followers}</div> : followers > 0 && <div className="field-ok">= {fmtNum(followers)} follower</div>}
+      </div>
+      <div>
+        <label className="label" htmlFor="f-fee">Booking fee mong muốn cho gói 2–3 video TikTok</label>
+        {input('fee', { id: 'f-fee', inputMode: 'numeric', placeholder: 'Ví dụ: 500.000đ hoặc 1.000.000đ — Bắt buộc nhập con số cụ thể, không để trống' })}
+        {fieldErr('fee') ? <div className="field-err" id="fee-msg">{err.fee}</div> : fee >= 50000 ? <div className="field-ok">= {fmtNum(fee)}đ cho gói 2–3 video</div> : <div className="hint">Bắt buộc nhập con số cụ thể, không để trống — hoặc chọn nhanh:</div>}
+        <div className="row wrap" style={{ gap: 6, marginTop: 8 }}>
+          {FEE_CHIPS.map(([v, lbl]) => (
+            <button key={v} type="button" className={`chip${fee === v ? ' on' : ''}`}
+              onClick={() => { setF(p => ({ ...p, fee: v.toLocaleString('vi-VN') + 'đ' })); setTouched(t => ({ ...t, fee: 1 })); setErr(validate({ ...f, fee: String(v) })); }}>
+              {lbl}
+            </button>
+          ))}
         </div>
-      )}
-
-      {step === 2 && (
-        <div className="card stack" style={{ gap: 16 }}>
-          <div><label className="label">Nền tảng chính *</label>
-            <div className="grid g3" style={{ gap: 8 }}>{PLATFORMS.map(p => (
-              <div key={p.v} className={`opt${form.platform === p.v ? ' on' : ''}`} onClick={() => pick('platform', p.v)}><div className="bold small">{p.v}</div><div className="xs muted">{p.d}</div></div>
-            ))}</div>
-          </div>
-          <div><label className="label">Loại nội dung *</label>
-            <div className="grid g3" style={{ gap: 8 }}>{CTYPES.map(c => (
-              <div key={c.v} className={`opt${form.ct === c.v ? ' on' : ''}`} onClick={() => pick('ct', c.v)}><div className="bold small">{c.l}</div><div className="xs muted">{c.s}</div></div>
-            ))}</div>
-          </div>
-          {showLive && <div><label className="label">Avg viewers / livestream *</label><input className="input" type="number" value={form.avg_viewers} onChange={set('avg_viewers')} /></div>}
-          <div><label className="label">Lĩnh vực chính *</label>
-            <div className="grid g2" style={{ gap: 8 }}>{NICHES.map(n => (
-              <div key={n.v} className={`opt${form.niche === n.v ? ' on' : ''}`} style={{ textAlign: 'left' }} onClick={() => pick('niche', n.v)}><div className="bold small">{n.l}</div><div className="xs muted">{n.s}</div></div>
-            ))}</div>
-          </div>
-          <button className="btn btn-primary btn-lg btn-block" onClick={next2}>Tiếp theo →</button>
-        </div>
-      )}
-
-      {step === 3 && (
-        <div className="card stack" style={{ gap: 16 }}>
-          <div className="alert alert-info small">💬 <span>Cho brand biết <b>mức cast bạn mong muốn</b>. Brand dựa vào đây để gửi offer phù hợp — bạn vẫn nhận / trả giá / từ chối từng offer sau.</span></div>
-          <div><label className="label">Hình thức bạn nhận * <span className="muted" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>(chọn nhiều)</span></label>
-            <div className="grid g3" style={{ gap: 8 }}>{DEAL_TYPES.map(d => (
-              <div key={d.v} className={`opt${form.deal_types.includes(d.v) ? ' on' : ''}`} style={{ textAlign: 'left' }} onClick={() => toggleType(d.v)}>
-                <div className="bold small">{form.deal_types.includes(d.v) ? '✓ ' : ''}{d.l}</div><div className="xs muted">{d.s}</div>
-              </div>
-            ))}</div>
-          </div>
-          {wantsFee && (
-            <div>
-              <label className="label">Giá mong muốn / 1 video (VNĐ, gross) *</label>
-              <input className="input" type="number" min="0" step="50000" value={form.video_fee} onChange={set('video_fee')} placeholder={fair.fee ? String(fair.fee) : '800000'} />
-              {fair.fee > 0 && (
-                <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '10px 12px', marginTop: 8 }}>
-                  <div className="small">Giá tham khảo cho kênh của bạn: <b style={{ color: 'var(--brand-700)' }}>{vnd(fair.fee)}</b>/video</div>
-                  <div className="xs muted" style={{ margin: '2px 0 8px' }}>Công thức công khai: {fair.formula}</div>
-                  <div className="row wrap" style={{ gap: 6 }}>
-                    {[['Dễ chốt', 0.8], ['Hợp lý', 1], ['Cao', 1.3]].map(([l, k]) => {
-                      const v = Math.round((fair.fee * k) / 10000) * 10000;
-                      return <button key={l} type="button" className={`btn btn-sm${Number(form.video_fee) === v ? ' btn-primary' : ''}`} onClick={() => pick('video_fee', String(v))}>{l} · {fmtMoney(v)}</button>;
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <div>
-            <label className="label">Số video bạn muốn nhận / tháng *</label>
-            <div className="row wrap" style={{ gap: 6 }}>
-              {[1, 2, 4, 8].map(n => <button key={n} type="button" className={`btn btn-sm${Number(form.videos_per_month) === n ? ' btn-primary' : ''}`} onClick={() => pick('videos_per_month', n)}>{n} video</button>)}
-              <input className="input input-sm" style={{ width: 90 }} type="number" min="1" max="60" value={form.videos_per_month} onChange={set('videos_per_month')} aria-label="Số video khác" />
-            </div>
-          </div>
-          <div className="grid g2" style={{ gap: 12 }}>
-            <div><label className="label">% hoa hồng mong muốn</label><input className="input" type="number" min="0" max="100" value={form.commission_pct} onChange={set('commission_pct')} /><div className="hint">Phổ biến 10–20% / đơn</div></div>
-            {showLive && <div><label className="label">Giá livestream / giờ (VNĐ)</label><input className="input" type="number" min="0" step="50000" value={form.live_hour_fee} onChange={set('live_hour_fee')} placeholder={fair.live_hour ? String(fair.live_hour) : ''} /></div>}
-          </div>
-          <label className="chk"><input type="checkbox" checked={form.spark} onChange={set('spark')} /><span>Đồng ý cấp <b>Spark Ads code</b> để brand chạy quảng cáo video{form.spark && <> — phụ phí <input className="input input-sm" style={{ width: 70, display: 'inline-block', margin: '0 4px' }} type="number" min="0" max="100" value={form.spark_fee_pct} onChange={set('spark_fee_pct')} placeholder="20" />% giá video</>}</span></label>
-          {wantsFee && Number(form.video_fee) > 0 && (
-            <div className="alert alert-ok small">📊 <span>Ước tính nếu đủ {form.videos_per_month} video/tháng: <b>{vnd(Number(form.video_fee) * (Number(form.videos_per_month) || 1))}</b> (gross) + {form.commission_pct || 0}% hoa hồng mỗi đơn.</span></div>
-          )}
-          <button className="btn btn-primary btn-lg btn-block" onClick={next3}>Tiếp theo →</button>
-        </div>
-      )}
-
-      {step === 4 && (
-        <div className="card stack" style={{ gap: 14 }}>
-          <div><label className="label">Tỉnh / thành nhận mẫu *</label>
-            <select className="select" value={form.address} onChange={set('address')}><option value="">Chọn tỉnh/thành…</option>{CITIES.map(c => <option key={c}>{c}</option>)}</select>
-            <div className="hint">Địa chỉ chi tiết bạn tự cập nhật trong trang theo dõi sau khi được duyệt.</div>
-          </div>
-          <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 14 }}>
-            <div className="bold small" style={{ color: 'var(--brand-700)', marginBottom: 8 }}>Tóm tắt hồ sơ</div>
-            <div className="grid g2" style={{ gap: 8 }}>
-              {[['Họ tên', form.name], ['Kênh', form.link], ['Followers', fmtNum(form.followers)], ['Score', score.toFixed(2)], ['Nền tảng', form.platform], ['Lĩnh vực', nicheLabel(form.niche)], ['Mức cast', wantsFee ? `${fmtMoney(form.video_fee)}đ/video` : 'Barter'], ['Video / tháng', `${form.videos_per_month} video · HH ${form.commission_pct || 0}%`]].map(([l, v]) => (
-                <div key={l}><div className="xs muted bold">{l}</div><div className="small bold ellipsis">{v || '—'}</div></div>
-              ))}
-            </div>
-          </div>
-          <label className="chk" style={{ background: form.consent ? 'var(--brand-50)' : 'var(--surface-2)', borderRadius: 12, padding: 12 }}>
-            <input type="checkbox" checked={form.consent} onChange={set('consent')} />
-            <span>
-              <b>Tôi đồng ý</b> cho KOL Hub xử lý dữ liệu cá nhân (họ tên, SĐT/email, link và số liệu kênh, tỉnh/thành) để xét duyệt, ghép chiến dịch, gửi mẫu và liên hệ hợp tác, theo <b>Nghị định 13/2023/NĐ-CP</b>.
-              <span className="muted"> Bạn có thể yêu cầu xem, sửa, xoá dữ liệu hoặc rút lại đồng ý bất cứ lúc nào. Chưa thu CCCD / số tài khoản ở bước này. *</span>
-            </span>
-          </label>
-          <button className="btn btn-primary btn-lg btn-block" disabled={loading || !form.consent} onClick={submit}>{loading ? 'Đang gửi…' : 'Gửi đơn đăng ký'}</button>
-          <div className="hint" style={{ textAlign: 'center' }}>Thông tin chỉ dùng để gửi mẫu và liên lạc — không chia sẻ bên thứ ba.</div>
-        </div>
-      )}
-    </div>
+      </div>
+      <input tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} style={{ position: 'absolute', left: -9999, width: 1, height: 1 }} aria-hidden="true" />
+      {serverErr && <div className="alert alert-error small" role="alert">⚠ {serverErr}</div>}
+      <button type="submit" className="btn-cta" disabled={loading}>{loading ? 'Đang giữ slot cho bạn…' : 'Đăng Ký Nhận Sample & Giữ Slot Ngay 🚀'}</button>
+      <div className="xs muted" style={{ textAlign: 'center', lineHeight: 1.5 }}>
+        ⏱ Chỉ mất 30 giây · Bằng việc đăng ký, bạn đồng ý để KOL Hub dùng thông tin trên để liên hệ hợp tác (Nghị định 13/2023). Có thể yêu cầu xoá bất cứ lúc nào.
+      </div>
+    </form>
   );
 }
 
-function Success({ res, onHome }) {
+function QuickSuccess({ res }) {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const portal = `${origin}/portal/${res.portal_token}`;
-  const approved = res.status === 'approved';
   return (
-    <div className="form-wrap" style={{ textAlign: 'center', paddingTop: 50 }}>
-      <div style={{ fontSize: 46 }}>{approved ? '🎉' : '✅'}</div>
-      <h1 style={{ fontSize: 26, fontWeight: 900, margin: '10px 0 8px' }}>{approved ? 'Bạn đã được duyệt!' : 'Đã nhận đơn của bạn'}</h1>
-      <p className="muted" style={{ maxWidth: 420, margin: '0 auto 22px' }}>
-        {approved ? 'Hồ sơ đạt chuẩn và được duyệt tự động. Cập nhật địa chỉ nhận mẫu ngay trong trang theo dõi.' : 'Team sẽ xem hồ sơ trong 24–48h. Bạn theo dõi trạng thái bất cứ lúc nào qua link bên dưới.'}
-      </p>
-      <div className="card" style={{ textAlign: 'left', maxWidth: 440, margin: '0 auto 16px' }}>
-        <div className="label">Link theo dõi riêng của bạn — lưu lại nhé</div>
-        <div className="row"><input className="input input-sm grow" readOnly value={portal} onFocus={e => e.target.select()} /><a className="btn btn-primary btn-sm" href={portal}>Mở</a></div>
-        <div className="hint">Xem đơn mẫu đang giao, hạn đăng video, nộp link video tại đây.</div>
+    <div className="stack" style={{ gap: 14, textAlign: 'center' }} role="status">
+      <div className="success-ico">✓</div>
+      <h2 style={{ fontSize: 22, fontWeight: 900 }}>Đăng ký thành công!</h2>
+      <p style={{ color: 'var(--ink-2)', fontSize: 15, lineHeight: 1.6 }}>Team KOL Hub đã ghi nhận và sẽ liên hệ qua <b>Zalo</b> cho bạn trong vòng <b>24h</b> tới.</p>
+      <div className="card" style={{ textAlign: 'left', padding: 14, background: 'var(--brand-50)', borderColor: 'var(--brand-100)' }}>
+        <div className="small bold">⚡ Muốn được duyệt ưu tiên?</div>
+        <div className="xs muted" style={{ margin: '4px 0 10px' }}>Bổ sung lượt xem trung bình, lĩnh vực và tỉnh/thành nhận sample (30 giây) — hồ sơ đủ số liệu được duyệt tự động.</div>
+        <a className="btn btn-primary btn-block" href={portal}>Hoàn thiện hồ sơ →</a>
       </div>
-      <button className="btn" onClick={onHome}>Về trang chủ</button>
+      <div className="xs muted">Lưu link theo dõi đơn sample của bạn: <a className="link" href={portal}>{portal.replace(/^https?:\/\//, '')}</a></div>
     </div>
   );
 }
+
+const TRUST = [
+  ['🛡️', 'Không cần mật khẩu / Không liên kết tài khoản độc hại'],
+  ['📦', 'Giao sample tận nơi hoàn toàn miễn phí'],
+  ['🚀', 'Cam kết hỗ trợ đẩy Ads tối đa cho video đạt chuẩn'],
+];
+
+const FAQ = [
+  ['Có mất phí gì không?', 'Không. Sample được giao tận nhà miễn phí, không cọc, không phí ẩn. Bạn không phải trả bất kỳ khoản nào.'],
+  ['Cần bao nhiêu follower?', 'Không yêu cầu follower lớn. Team ưu tiên kênh có tương tác thật (lượt xem / follower tốt) và nội dung phù hợp sản phẩm.'],
+  ['Có phải đưa mật khẩu hay đăng nhập TikTok không?', 'Không bao giờ. Bạn chỉ gửi link kênh công khai. KOL Hub không yêu cầu mật khẩu, không liên kết hay cấp quyền tài khoản.'],
+  ['Booking fee để làm gì?', 'Là mức bạn mong muốn cho gói 2–3 video. Team dùng con số này để ghép chiến dịch có ngân sách phù hợp — bạn vẫn nhận, trả giá hoặc từ chối từng offer.'],
+  ['Khi nào nhận được sample?', 'Team liên hệ qua Zalo trong 24h để xác nhận địa chỉ. Sample được gửi khi hồ sơ được duyệt; bạn theo dõi mã vận đơn ngay trên link cá nhân.'],
+  ['"Đẩy Ads" là gì?', 'Video đạt chuẩn (đúng brief, đăng đúng hạn) được brand chạy quảng cáo bằng Spark Ads / GMV Max — kênh bạn có thêm lượt xem và đơn hàng.'],
+];
 
 export default function Home() {
   const router = useRouter();
-  const [view, setView] = useState('landing');
   const [pub, setPub] = useState(null);
   const [res, setRes] = useState(null);
   const [prefill, setPrefill] = useState({});
   const [brief, setBrief] = useState(null);
+  const [formVisible, setFormVisible] = useState(true);
+  const formRef = useRef();
 
   useEffect(() => { fetch('/api/public/campaigns').then(r => r.json()).then(setPub).catch(() => setPub({ campaigns: [], stats: {} })); }, []);
   useEffect(() => {
@@ -318,151 +238,146 @@ export default function Home() {
     const utm = {};
     for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) if (router.query[k]) utm[k] = String(router.query[k]).slice(0, 100);
     if (Object.keys(utm).length) p.utm = utm;
-    if (h) { p.link = `tiktok.com/@${String(h).replace(/^@/, '')}`; }
+    if (h) p.link = `tiktok.com/@${String(h).replace(/^@/, '')}`;
     setPrefill(p);
-    if (h) setView('apply');
+    if (h) setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
   }, [router.isReady, router.query]);
+  // Nút CTA dính đáy trên mobile khi form ra khỏi màn hình
+  useEffect(() => {
+    if (!formRef.current || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => setFormVisible(e.isIntersecting), { threshold: 0.15 });
+    io.observe(formRef.current);
+    return () => io.disconnect();
+  }, []);
 
-  const apply = () => { setBrief(null); setView('apply'); window.scrollTo(0, 0); };
+  const toForm = () => { setBrief(null); formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => document.getElementById('f-name')?.focus({ preventScroll: true }), 500); };
   if (pub?.terms) PAY_DEFAULTS = { ...PAY, ...pub.terms };
-  const pay = payOf(null);
   const camps = pub?.campaigns || [];
   const stats = pub?.stats || {};
+  const slots = pub?.slots;
 
   return (
     <>
       <Head>
-        <title>KOL Hub · Tuyển creator — phí công khai, trả đúng hạn</title>
-        <meta name="description" content="Đăng ký làm creator: nhận sản phẩm mẫu miễn phí, được boost ads, hoa hồng rõ ràng. Duyệt tự động, theo dõi đơn mẫu minh bạch." />
+        <title>Nhận Sample Miễn Phí & Đẩy Ads cho kênh TikTok · KOL Hub</title>
+        <meta name="description" content="Không yêu cầu follower lớn — ưu tiên creator có tương tác thật. Giao sample tận nhà 100%, không cọc phí ẩn. Đăng ký 30 giây." />
+        <meta property="og:title" content="Nhận Sample Miễn Phí & Đẩy Ads Độc Quyền Cho Kênh TikTok Của Bạn" />
+        <meta property="og:description" content="Giao tận nhà 100%, không cọc phí ẩn. Đăng ký 30 giây — team liên hệ Zalo trong 24h." />
       </Head>
       <div className="hero" style={{ minHeight: '100vh' }}>
         <div className="pub-wrap">
           <nav className="pub-nav">
             <div className="row"><div className="brand-logo">K</div><b>KOL Hub</b></div>
-            <div className="row"><a className="btn btn-sm hide-sm" href="/brands">Dành cho Brand →</a>{view === 'landing' && <button className="btn btn-primary" onClick={apply}>Đăng ký</button>}</div>
+            <div className="row"><a className="btn btn-sm hide-sm" href="/brands">Dành cho Brand →</a>{!res && <button className="btn btn-primary btn-sm" onClick={toForm}>Giữ slot</button>}</div>
           </nav>
 
-          {view === 'apply' && <ApplyForm initial={prefill} onBack={() => setView('landing')} onDone={r => { setRes(r); setView('done'); window.scrollTo(0, 0); }} />}
-          {view === 'done' && res && <Success res={res} onHome={() => setView('landing')} />}
-
-          {view === 'landing' && (
-            <>
-              <section className="hero-grid">
-                <div className="stack" style={{ gap: 18 }}>
-                  <span className="pill" style={{ alignSelf: 'flex-start' }}><span className="dot" style={{ color: 'var(--brand)' }} />{camps.length ? `${camps.length} chiến dịch đang tuyển` : 'Đang mở đăng ký creator'}</span>
-                  <h1>Brand rõ ràng.<br /><em>Phí công khai.</em><br />Trả tiền đúng hạn.</h1>
-                  <p className="muted" style={{ fontSize: 16, maxWidth: 470 }}>Xem trước brand, brief, mức phí, % hoa hồng và lịch thanh toán <b style={{ color: 'var(--ink)' }}>trước khi đăng ký</b>. Cọc {pay.deposit_pct}% khi chốt, phần còn lại trả trong {pay.payment_days} ngày sau khi video được duyệt. Không cần triệu follower — chúng tôi ưu tiên <b style={{ color: 'var(--ink)' }}>tỉ lệ xem thật</b>.</p>
-                  <div className="row wrap">
-                    <button className="btn btn-primary btn-lg" onClick={apply}>Đăng ký ngay — miễn phí</button>
-                    <a className="btn btn-lg" href="#campaigns">Xem chiến dịch</a>
-                  </div>
-                  {stats.creators >= 10 && (
-                    <div className="row" style={{ gap: 26, marginTop: 6 }}>
-                      {[[stats.creators, 'creator đang hợp tác'], [stats.samples, 'mẫu đã gửi'], [stats.videos, 'video đã đăng'], ...(Number(stats.paid_on_time) > 0 ? [[stats.paid_on_time, 'lần đã thanh toán']] : [])].map(([v, l]) => (
-                        <div key={l}><div style={{ fontSize: 24, fontWeight: 900, color: 'var(--brand-700)' }} className="tnum">{fmtNum(v)}</div><div className="xs muted">{l}</div></div>
-                      ))}
-                    </div>
-                  )}
+          <section className="hero-grid hero-grid-form">
+            <div className="stack" style={{ gap: 18 }}>
+              {slots && (
+                <div className="scarcity" role="status">
+                  {slots.left > 0
+                    ? <>⚡ Chỉ còn đúng <b className="tnum">{fmtNum(slots.left)}</b> slot nhận sample tháng này — Đóng đơn khi đủ số lượng.</>
+                    : <>⚡ Đã kín slot sample tháng này — Đăng ký ngay để vào danh sách ưu tiên tháng sau.</>}
                 </div>
-
-                <div className="card" style={{ padding: 22 }}>
-                  <div className="bold" style={{ marginBottom: 14 }}>Hành trình của bạn</div>
-                  {[
-                    ['📝', 'Đăng ký 2 phút', 'Hồ sơ đạt chuẩn được duyệt tự động ngay lập tức'],
-                    ['🤝', 'Nhận offer hoặc tự báo giá', 'Nhận / trả giá / từ chối trong 1 chạm, có hạn trả lời rõ ràng'],
-                    ['🎬', 'Đăng video, dán link', 'Hệ thống tự xác minh video đúng kênh của bạn'],
-                    ['💸', 'Nhận phí + hoa hồng', `Cọc ${pay.deposit_pct}% khi chốt, phần còn lại trong ${pay.payment_days} ngày sau duyệt video`],
-                  ].map(([ic, t, s], i) => (
-                    <div key={t} className="benefit" style={{ padding: '10px 0', borderTop: i ? '1px solid var(--line-2)' : 'none' }}>
-                      <div className="benefit-ico">{ic}</div>
-                      <div><div className="bold small">{t}</div><div className="xs muted">{s}</div></div>
-                    </div>
+              )}
+              <h1 className="hero-h1">Nhận Sample Miễn Phí &amp; <em>Đẩy Ads Độc Quyền</em> Cho Kênh TikTok Của Bạn</h1>
+              <p className="hero-sub">Không yêu cầu follower lớn — Ưu tiên creator có tương tác thật. Giao tận nhà 100%, không cọc phí ẩn.</p>
+              <div className="hero-points">
+                {['Đăng ký 30 giây, không cần đăng nhập', 'Team liên hệ Zalo trong 24h', 'Video đạt chuẩn được đẩy Ads'].map(t => <div key={t}>✓ {t}</div>)}
+              </div>
+              {stats.creators >= 10 && (
+                <div className="row hero-stats" style={{ gap: 26 }}>
+                  {[[stats.creators, 'creator đang hợp tác'], [stats.samples, 'sample đã gửi'], [stats.videos, 'video đã đăng']].map(([v, l]) => (
+                    <div key={l}><div style={{ fontSize: 22, fontWeight: 900, color: 'var(--brand-700)' }} className="tnum">{fmtNum(v)}</div><div className="xs muted">{l}</div></div>
                   ))}
                 </div>
-              </section>
+              )}
+            </div>
 
-              <section id="campaigns" style={{ paddingBottom: 50 }}>
-                <div className="row-between" style={{ marginBottom: 14 }}>
-                  <h2 style={{ fontSize: 24, fontWeight: 900 }}>Chiến dịch đang tuyển</h2>
-                </div>
-                {camps.length ? (
-                  <div className="grid g3">
-                    {camps.map(c => {
-                      const cp = payOf(c);
-                      return (
-                        <div key={c.id} className="card stack" style={{ gap: 10 }}>
-                          <div className="row-between"><span className="badge tone-violet">{dealTypeLabel(c.deal_type || 'barter')}</span><span className={`badge tone-${c.slots_left > 3 ? 'blue' : 'red'}`}>Còn {c.slots_left ?? '—'} slot</span></div>
-                          <div>
-                            {c.brand_name && <div className="xs bold" style={{ color: 'var(--brand-700)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{c.brand_name}</div>}
-                            <h3 style={{ fontSize: 17 }}>{c.name}</h3>
-                            <div className="small muted">{c.product}{c.niche ? ` · ${nicheLabel(c.niche)}` : ''}</div>
-                          </div>
-                          {(c.brief_short || c.brief) && <p className="small" style={{ color: 'var(--ink-2)' }}>{c.brief_short || String(c.brief).slice(0, 220)}{String(c.brief || '').length > 220 ? '…' : ''}</p>}
-                          <div className="grid g2 g2k" style={{ gap: 6 }}>
-                            <Stat label="Phí / creator" value={feeText(c)} />
-                            <Stat label="Hoa hồng" value={`${Number(c.commission_pct) || 0}%`} />
-                          </div>
-                          <div className="xs muted">{isBarter(c) ? `💳 Barter · 1 video · không phạt` : `💳 Cọc ${cp.deposit_pct}% · trả nốt trong ${cp.payment_days} ngày sau duyệt · ${c.posts_per || 1} video`}</div>
-                          <div className="row-between" style={{ marginTop: 'auto' }}>
-                            <span className="xs muted">{c.end_date ? `Hạn ${fmtDate(c.end_date)}` : ''}</span>
-                            <div className="row" style={{ gap: 6 }}>
-                              <button className="btn btn-sm" onClick={() => setBrief(c)}>Xem brief</button>
-                              <button className="btn btn-primary btn-sm" disabled={c.slots_left <= 0} onClick={apply}>Ứng tuyển</button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+            <div ref={formRef} id="dang-ky" className="card form-card">
+              {res ? <QuickSuccess res={res} /> : (
+                <>
+                  <div className="trust-bar">
+                    {TRUST.map(([ic, t]) => <div key={t} className="trust-item"><span className="trust-ico">{ic}</span><span>{t}</span></div>)}
                   </div>
-                ) : (
-                  <div className="card empty">Chiến dịch mới sẽ mở sớm — đăng ký trước để được ưu tiên ghép.</div>
-                )}
-              </section>
+                  <QuickForm initial={prefill} onDone={r => { setRes(r); setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }} />
+                </>
+              )}
+            </div>
+          </section>
 
-              <section style={{ paddingBottom: 50 }}>
-                <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 14 }}>Cam kết thanh toán</h2>
-                <div className="grid g-main">
-                  <div className="card stack" style={{ gap: 12 }}>
-                    {[
-                      ['💰', `Cọc ${pay.deposit_pct}% ngay khi chốt deal`, 'Không phải chờ video lên mới có tiền.'],
-                      ['📅', `Phần còn lại trong ${pay.payment_days} ngày`, 'Tính từ lúc video được duyệt. Quá hạn bạn thấy ngay trong trang cá nhân.'],
-                      ['🧾', `Thuế TNCN ${pay.pit_rate_pct}% hiển thị minh bạch`, `Chỉ khấu trừ với mỗi lần trả từ ${vnd(pay.pit_threshold)}. Mọi khoản đều ghi rõ gross → thuế → thực nhận.`],
-                      ['📐', 'Giá hợp lý công khai', `views TB / 1000 × CPM × hệ số ngành (${Object.entries(NICHE_MULT).filter(([, m]) => m > 1).map(([k, m]) => `${nicheLabel(k)} ×${m}`).join(', ')}). Bạn tự báo giá được — bảng giá chỉ để tham khảo.`],
-                    ].map(([ic, t, s]) => (
-                      <div key={t} className="benefit"><div className="benefit-ico">{ic}</div><div><div className="bold small">{t}</div><div className="xs muted">{s}</div></div></div>
-                    ))}
-                  </div>
-                  <div className="card">
-                    <div className="bold small" style={{ marginBottom: 10 }}>Ví dụ: deal phí 3.000.000đ</div>
-                    <PayBreakdown fee={3000000} pay={pay} />
-                    <div className="xs muted" style={{ marginTop: 8 }}>Tổng thực nhận {vnd(payoutSplit(3000000, pay.deposit_pct, pay).reduce((a, p) => a + p.net, 0))} + hoa hồng mỗi đơn.</div>
-                  </div>
-                </div>
-              </section>
+          <section style={{ paddingBottom: 50 }}>
+            <h2 className="sec-h2">Nhận sample chỉ với 3 bước</h2>
+            <div className="grid g3">
+              {[
+                ['📝', 'Đăng ký 30 giây', 'Điền 5 thông tin — không cần mật khẩu, không đăng nhập, không mã số thuế.'],
+                ['💬', 'Team nhắn Zalo trong 24h', 'Xác nhận địa chỉ, gửi sample tận nhà miễn phí. Theo dõi mã vận đơn trên link cá nhân.'],
+                ['🚀', 'Đăng video, được đẩy Ads', 'Video đạt chuẩn được brand chạy Ads (Spark Ads / GMV Max) — tăng view và đơn cho kênh bạn.'],
+              ].map(([ic, t, s], i) => (
+                <div key={t} className="card"><div className="row" style={{ gap: 10 }}><div className="how-num">{i + 1}</div><span style={{ fontSize: 22 }}>{ic}</span></div><div className="bold" style={{ marginTop: 10 }}>{t}</div><div className="small muted" style={{ marginTop: 4 }}>{s}</div></div>
+              ))}
+            </div>
+          </section>
 
-              <section style={{ paddingBottom: 60 }}>
-                <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 14 }}>Chúng tôi tìm creator thế nào?</h2>
-                <div className="how">
-                  {[
-                    ['Tỉ lệ xem thật', 'Avg views / followers ≥ 0.2 được duyệt ngay. Follower ảo không giúp gì.'],
-                    ['Đúng lĩnh vực', 'Làm đẹp, sức khoẻ, mẹ & bé, nhà cửa… ghép đúng sản phẩm bạn thật sự dùng.'],
-                    ['Đăng đúng hạn', 'Đăng video trong 7 ngày sau khi nhận mẫu để được mời chiến dịch tiếp.'],
-                    ['Ra đơn thật', 'Creator có GMV tốt được lên nhóm Scaling: boost ads + hoa hồng cao hơn.'],
-                  ].map(([t, s], i) => (
-                    <div key={t} className="card"><div className="how-num">{i + 1}</div><div className="bold">{t}</div><div className="small muted" style={{ marginTop: 4 }}>{s}</div></div>
-                  ))}
-                </div>
-                <div className="card" style={{ marginTop: 20, textAlign: 'center', padding: 30, background: 'linear-gradient(135deg,#0b8a5f,#0e9f6e 60%,#34c38f)', color: '#fff', border: 'none' }}>
-                  <h2 style={{ fontSize: 24, fontWeight: 900 }}>Sẵn sàng nhận mẫu đầu tiên?</h2>
-                  <p style={{ opacity: .85, margin: '6px 0 16px' }}>Miễn phí · Không ràng buộc · Duyệt tự động</p>
-                  <button className="btn btn-lg" style={{ color: 'var(--brand-700)', fontWeight: 800 }} onClick={apply}>Đăng ký ngay →</button>
-                </div>
-              </section>
-            </>
+          {camps.length > 0 && (
+            <section id="campaigns" style={{ paddingBottom: 50 }}>
+              <h2 className="sec-h2">Chiến dịch đang nhận creator</h2>
+              <div className="grid g3">
+                {camps.map(c => (
+                  <div key={c.id} className="card stack" style={{ gap: 10 }}>
+                    <div className="row-between"><span className="badge tone-violet">{dealTypeLabel(c.deal_type || 'barter')}</span><span className={`badge tone-${c.slots_left > 3 ? 'blue' : 'red'}`}>Còn {c.slots_left ?? '—'} slot</span></div>
+                    <div>
+                      {c.brand_name && <div className="xs bold" style={{ color: 'var(--brand-700)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{c.brand_name}</div>}
+                      <h3 style={{ fontSize: 17 }}>{c.name}</h3>
+                      <div className="small muted">{c.product}{c.niche ? ` · ${nicheLabel(c.niche)}` : ''}</div>
+                    </div>
+                    <div className="grid g2 g2k" style={{ gap: 6 }}>
+                      <Stat label="Quyền lợi" value={feeText(c)} />
+                      <Stat label="Hoa hồng" value={`${Number(c.commission_pct) || 0}%`} />
+                    </div>
+                    <div className="row-between" style={{ marginTop: 'auto' }}>
+                      <span className="xs muted">{c.end_date ? `Hạn ${fmtDate(c.end_date)}` : ''}</span>
+                      <div className="row" style={{ gap: 6 }}>
+                        <button className="btn btn-sm" onClick={() => setBrief(c)}>Xem brief</button>
+                        <button className="btn btn-primary btn-sm" disabled={c.slots_left <= 0} onClick={toForm}>Giữ slot</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section style={{ paddingBottom: 40 }}>
+            <h2 className="sec-h2">Câu hỏi thường gặp</h2>
+            <div className="faq">
+              {FAQ.map(([q, a], i) => (
+                <details key={q} open={i === 0}>
+                  <summary>{q}</summary>
+                  <p>{a}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+
+          {!res && (
+            <section style={{ paddingBottom: 90 }}>
+              <div className="card" style={{ textAlign: 'center', padding: 30, background: 'linear-gradient(135deg,#0b8a5f,#0e9f6e 60%,#34c38f)', color: '#fff', border: 'none' }}>
+                <h2 style={{ fontSize: 24, fontWeight: 900 }}>{slots && slots.left > 0 ? `Còn ${fmtNum(slots.left)} slot sample tháng này` : 'Vào danh sách ưu tiên tháng sau'}</h2>
+                <p style={{ opacity: .9, margin: '6px 0 16px' }}>Miễn phí · Giao tận nhà · Không cọc phí ẩn</p>
+                <button className="btn btn-lg" style={{ color: 'var(--brand-700)', fontWeight: 800 }} onClick={toForm}>Đăng Ký Nhận Sample & Giữ Slot Ngay 🚀</button>
+              </div>
+            </section>
           )}
         </div>
       </div>
-      {brief && <BriefModal c={brief} onClose={() => setBrief(null)} onApply={apply} />}
+
+      {!res && !formVisible && (
+        <div className="sticky-cta">
+          <button className="btn-cta" onClick={toForm}>Đăng Ký Nhận Sample & Giữ Slot Ngay 🚀</button>
+        </div>
+      )}
+      {brief && <BriefModal c={brief} onClose={() => setBrief(null)} onApply={toForm} />}
     </>
   );
 }

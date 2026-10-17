@@ -5,7 +5,8 @@ import { engagementScore, potentialOf } from '../../../lib/scoring';
 import { getRules } from '../../../lib/settings';
 import { screenCreator } from '../../../lib/automation';
 import { logEvent } from '../../../lib/events';
-import { handleFromLink, NICHES, PLATFORMS, CTYPES } from '../../../lib/constants';
+import { notifyTeam } from '../../../lib/notify';
+import { handleFromLink, normalizeTikTok, parseMoney, NICHES, PLATFORMS, CTYPES } from '../../../lib/constants';
 import { creatorTier } from '../../../lib/pricing';
 import { healthSql, nextAction, HEALTH_FORMULA } from '../../../lib/creatorIntel';
 import { parseRateCard, saveRateCard } from '../../../lib/rateCard';
@@ -28,7 +29,7 @@ function baseSql(w) {
       COALESCE(v.views_sum,0) AS views_sum, COALESCE(v.gmv_sum,0) AS gmv_sum,
       COALESCE(d.active_deals,0) AS active_deals, d.open_deal_status, COALESCE(d.booked_fee,0) AS booked_fee,
       GREATEST(c.applied_at, c.updated_at, e.last_event) AS last_activity,
-      rc.video_fee AS ask_fee, rc.videos_per_month AS ask_videos, rc.deal_types AS ask_types
+      rc.video_fee AS ask_fee, rc.package_fee AS ask_package, rc.videos_per_month AS ask_videos, rc.deal_types AS ask_types
     FROM creators c
     LEFT JOIN rate_cards rc ON rc.creator_id=c.id
     LEFT JOIN LATERAL (
@@ -62,7 +63,7 @@ const SEGMENTS = {
 };
 
 async function list(req) {
-  const { status, niche, ct, search, sort, potential, source, tier, segment } = req.query;
+  const { status, niche, ct, search, sort, potential, source, tier, segment } = req.query; // + followers (khoảng)
   const exporting = req.query.export === '1';
   const page = Math.max(1, toInt(req.query.page, 1));
   const rules = await getRules();
@@ -73,6 +74,8 @@ async function list(req) {
   if (ct && ct !== 'all') add('c.content_type=?', ct);
   if (potential && potential !== 'all') add('c.potential=?', potential);
   if (source && source !== 'all') add('c.source=?', source);
+  const FR = { lt1k: [0, 1000], '1k_10k': [1000, 10000], '10k_50k': [10000, 50000], '50k_100k': [50000, 100000], gt100k: [100000, 1e12] };
+  if (FR[req.query.followers]) { const [lo, hi] = FR[req.query.followers]; p.push(lo, hi); where.push(`c.followers >= $${p.length - 1} AND c.followers < $${p.length}`); }
   if (tier === 'seed') where.push('c.gmv <= 0');
   if (tier === 'pro') { p.push(rules.scale_min_gmv); where.push(`c.gmv > 0 AND c.gmv < $${p.length}`); }
   if (tier === 'partner') { p.push(rules.scale_min_gmv); where.push(`c.gmv >= $${p.length}`); }
@@ -100,19 +103,38 @@ async function list(req) {
 async function create(req, res) {
   const b = req.body || {};
   if (b.website) return { success: true }; // honeypot chống bot
+  // quick = form 4 trường trên landing (tên, Zalo, link TikTok, booking fee gói 2–3 video).
+  // Số liệu kênh bổ sung sau trong portal → lúc đó mới tự chấm điểm.
+  const quick = b.quick === true;
   const name = String(b.name || '').trim().slice(0, 255);
-  const link = String(b.tiktok_link || '').trim().slice(0, 512);
   const email = String(b.email || '').trim().slice(0, 255);
-  const phone = String(b.phone || '').replace(/\s/g, '').slice(0, 20);
-  const followers = Math.max(0, toInt(b.followers));
+  const phone = String(b.phone || '').replace(/[\s.-]/g, '').slice(0, 20);
+  let link = String(b.tiktok_link || '').trim().slice(0, 512);
+  let packageFee = null;
+  if (quick) {
+    if (!name) bad('Nhập họ tên hoặc nickname.');
+    if (!phone) bad('Nhập số điện thoại / Zalo để team gửi thông tin nhận sample.');
+    if (!/^(\+84|84|0)[0-9]{9,10}$/.test(phone)) bad('Số điện thoại chưa đúng (VD: 0901234567).');
+    const tt = normalizeTikTok(link);
+    if (!tt.link) bad('Dán link kênh TikTok (VD: tiktok.com/@tenkenh) hoặc @tenkenh.');
+    link = tt.link;
+    packageFee = Math.round(parseMoney(b.package_fee));
+    if (!Number.isFinite(packageFee) || packageFee < 50000) bad('Nhập booking fee bằng con số cụ thể (VD: 500.000đ hoặc 1.000.000đ).');
+    if (packageFee > 500000000) bad('Booking fee có vẻ chưa đúng — kiểm tra lại số 0.');
+  }
+  // Follower: nhận "5000", "5k", "1,2tr"
+  const followers = Math.max(0, Math.round(quick ? parseMoney(b.followers) || 0 : toInt(b.followers)));
   const avg_views = Math.max(0, toInt(b.avg_views));
-  if (!name || !link || !followers) bad('Thiếu thông tin bắt buộc.');
-  if (!phone && !email) bad('Cần có SĐT hoặc Email.');
+  if (quick && (!followers || followers > 1e8)) bad('Nhập số follower TikTok (VD: 5000 hoặc 5k).');
+  if (!quick) {
+    if (!name || !link || !followers) bad('Thiếu thông tin bắt buộc.');
+    if (!phone && !email) bad('Cần có SĐT hoặc Email.');
+    if (phone && !/^(\+84|0)[0-9]{9,10}$/.test(phone)) bad('SĐT không hợp lệ.');
+    if (!NICHES.some(n => n.v === b.niche)) bad('Lĩnh vực không hợp lệ.');
+    if (!PLATFORMS.some(x => x.v === b.platform)) bad('Nền tảng không hợp lệ.');
+    if (!CTYPES.some(x => x.v === b.content_type)) bad('Loại nội dung không hợp lệ.');
+  }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) bad('Email không hợp lệ.');
-  if (phone && !/^(\+84|0)[0-9]{9,10}$/.test(phone)) bad('SĐT không hợp lệ.');
-  if (!NICHES.some(n => n.v === b.niche)) bad('Lĩnh vực không hợp lệ.');
-  if (!PLATFORMS.some(x => x.v === b.platform)) bad('Nền tảng không hợp lệ.');
-  if (!CTYPES.some(x => x.v === b.content_type)) bad('Loại nội dung không hợp lệ.');
   if (b.consent !== true) bad('Cần đồng ý xử lý dữ liệu cá nhân để đăng ký.');
 
   const handle = handleFromLink(link);
@@ -124,14 +146,14 @@ async function create(req, res) {
   const score = engagementScore(followers, avg_views);
   const fields = {
     name, email, phone, tiktok_link: link, handle, followers, avg_views,
-    avg_viewers: Math.max(0, toInt(b.avg_viewers)), niche: b.niche, platform: b.platform, content_type: b.content_type,
+    avg_viewers: Math.max(0, toInt(b.avg_viewers)), niche: quick ? 'other' : b.niche, platform: quick ? 'TikTok' : b.platform, content_type: quick ? 'video' : b.content_type,
     channel_gmv: String(b.channel_gmv || '').slice(0, 50), address: String(b.address || '').slice(0, 200),
     score, potential: potentialOf(score),
   };
 
   // Creator được mời (prospect) quay lại điền form → cập nhật hồ sơ thay vì báo trùng
   if (dupe.rows.length && dupe.rows[0].source !== 'invite') {
-    return res.status(409).json({ error: 'Kênh / SĐT / email này đã đăng ký rồi. Kiểm tra link theo dõi đã nhận hoặc liên hệ team.' });
+    return res.status(409).json({ error: 'Số Zalo hoặc kênh TikTok này đã đăng ký rồi — team sẽ liên hệ bạn qua Zalo. Nếu cần gấp, nhắn lại cho team nhé!' });
   }
 
   // Nguồn tuyển: mã bài đăng group FB (?acq= hoặc cookie kol_acq từ /j/[code])
@@ -150,7 +172,9 @@ async function create(req, res) {
 
   const rules = await getRules();
   // Bước "Mức cast": creator tự khai giá + số video mong muốn (validate trước khi ghi)
-  const rateCard = b.rate_card && typeof b.rate_card === 'object' ? parseRateCard(b.rate_card) : null;
+  const rateCard = quick
+    ? parseRateCard({ package_fee: packageFee, package_videos: '2-3', deal_types: ['barter', 'hybrid', 'fee'] })
+    : b.rate_card && typeof b.rate_card === 'object' ? parseRateCard(b.rate_card) : null;
   const out = await tx(async db => {
     let referredBy = null;
     if (b.ref) {
@@ -177,17 +201,24 @@ async function create(req, res) {
       );
       row = r.rows[0];
     }
-    await logEvent(db, { type: 'creator_applied', creator_id: row.id, actor: 'creator', message: `Đăng ký mới · ${followers.toLocaleString('vi-VN')} followers · score ${score}${referredBy ? ' · qua giới thiệu' : ''}${acq ? ` · nguồn ${acqSource} (${acq})` : utm.utm_source ? ` · UTM ${utm.utm_source}/${utm.utm_medium || '-'}` : ''}` });
+    await logEvent(db, { type: 'creator_applied', creator_id: row.id, actor: 'creator', message: `${quick ? `Đăng ký nhanh · booking ${packageFee.toLocaleString('vi-VN')}đ / gói 2–3 video` : `Đăng ký mới · ${followers.toLocaleString('vi-VN')} followers · score ${score}`}${referredBy ? ' · qua giới thiệu' : ''}${acq ? ` · nguồn ${acqSource} (${acq})` : utm.utm_source ? ` · UTM ${utm.utm_source}/${utm.utm_medium || '-'}` : ''}` });
     if (rateCard) {
       await saveRateCard(db, row.id, rateCard);
-      const fee = rateCard.video_fee ? `${rateCard.video_fee.toLocaleString('vi-VN')}đ/video` : 'barter';
-      await logEvent(db, { type: 'rate_card_updated', creator_id: row.id, actor: 'creator', message: `Mức cast mong muốn: ${fee}${rateCard.videos_per_month ? ` · ${rateCard.videos_per_month} video/tháng` : ''} · ${rateCard.deal_types}` });
+      const fee = rateCard.video_fee ? `${rateCard.video_fee.toLocaleString('vi-VN')}đ/video` : rateCard.package_fee ? `${rateCard.package_fee.toLocaleString('vi-VN')}đ/gói 2–3 video` : 'barter';
+      if (!quick) await logEvent(db, { type: 'rate_card_updated', creator_id: row.id, actor: 'creator', message: `Mức cast mong muốn: ${fee}${rateCard.videos_per_month ? ` · ${rateCard.videos_per_month} video/tháng` : ''} · ${rateCard.deal_types}` });
     }
-    row.status = await screenCreator(db, row, rules);
+    if (quick) {
+      // Chưa có số liệu kênh → không tự chấm (tránh loại oan). Chờ creator bổ sung trong portal hoặc team xem kênh.
+      await db.query(`UPDATE creators SET status='pending', screen_reason=$1, updated_at=NOW() WHERE id=$2`, ['Đăng ký nhanh — chờ bổ sung số liệu kênh (portal) hoặc team xem kênh', row.id]);
+      row.status = 'pending';
+    } else {
+      row.status = await screenCreator(db, row, rules);
+    }
     return row;
   });
 
-  return res.status(201).json({ success: true, portal_token: out.portal_token, ref_code: out.ref_code, status: out.status, score });
+  notifyTeam(`🆕 Creator đăng ký${quick ? ' nhanh' : ''}: ${name}${handle ? ` @${handle}` : ''}${quick ? ` · booking ${packageFee.toLocaleString('vi-VN')}đ/gói 2–3 video` : ''}`).catch(() => {});
+  return res.status(201).json({ success: true, portal_token: out.portal_token, ref_code: out.ref_code, status: out.status, score, quick });
 }
 
 export default route({ GET: list, POST: create }, { admin: ['GET'] });
